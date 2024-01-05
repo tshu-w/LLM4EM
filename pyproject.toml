@@ -1,0 +1,21 @@
+# https://github.com/psf/black
+[tool.black]
+line-length = 88
+
+# https://github.com/microsoft/pyright
+[tool.pyright]
+include = ["src"]
+venv = "llm4em"
+typeCheckingMode = "off"
+useLibraryCodeForTypes = true
+
+# https://github.com/charliermarsh/ruff
+[tool.ruff]
+select = ["E", "F", "I", "UP"]
+fix = true
+ignore = ["E501"]
+target-version = "py311"
+
+# https://github.com/timothycrosley/isort/
+[tool.ruff.isort]
+combine-as-imports = true

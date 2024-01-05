@@ -1,0 +1,13 @@
+langchain
+openai
+
+transformers
+scikit-learn
+
+sentence-transformers
+faiss-cpu
+
+# dev tools
+jupyterlab
+shtab
+ray[tune]
