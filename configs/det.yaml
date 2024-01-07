@@ -1,4 +1,4 @@
-description: LLM4EM
+description: llm4em
 
 environment:
   image: docker.cipsup.cn/wangtianshu/base

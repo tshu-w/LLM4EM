@@ -24,9 +24,3 @@ repos:
     rev: 0.6.1
     hooks:
       - id: nbstripout
-
-  - repo: https://github.com/pre-commit/mirrors-prettier
-    rev: v3.0.3
-    hooks:
-      - id: prettier
-        types: [yaml]
