@@ -133,56 +133,92 @@ Candidate records:{% for candidate in candidates %}
     return preds
 
 
-def knockout(
-    instance,
-    top_k=1,
-) -> int:
+def knockout(instance, k=1) -> int:
     """
     A single elimination tournament where the loser of each match is immediately eliminated from the tournament.
     """
-    participants = list(range(len(instance["candidates"])))
+    indexes = list(range(len(instance["candidates"])))
 
-    while len(participants) > top_k:
+    while len(indexes) > k:
         winners = []
-        for i in range(0, len(participants), 2):
-            if i + 1 < len(participants):
+        for i in range(0, len(indexes), 2):
+            if i + 1 < len(indexes):
                 res = compare(
                     instance={
                         "anchor": instance["anchor"],
                         "cpair": [
-                            instance["candidates"][participants[i]],
-                            instance["candidates"][participants[i + 1]],
+                            instance["candidates"][indexes[i]],
+                            instance["candidates"][indexes[i + 1]],
                         ],
                     }
                 )
                 if res is not None:
                     if res is True:
-                        winners.append(participants[i])
+                        winners.append(indexes[i])
                     elif res is False:
-                        winners.append(participants[i + 1])
+                        winners.append(indexes[i + 1])
             else:
-                winners.append(participants[i])
+                winners.append(indexes[i])
 
-        participants = winners
+        indexes = winners
 
     preds = [False] * len(instance["candidates"])
-    if top_k == 1:
-        winner = participants[0]
+    if k == 1:
         m_instance = {
             "record_left": instance["anchor"],
-            "record_right": instance["candidates"][winner],
+            "record_right": instance["candidates"][indexes[0]],
         }
-        preds[winner] = match(m_instance)
+        preds[indexes[0]] = match(m_instance)
     else:
-        winners = participants
         s_instance = {
             "anchor": instance["anchor"],
-            "candidates": [instance["candidates"][winner] for winner in winners],
+            "candidates": [instance["candidates"][idx] for idx in indexes[:k]],
         }
         s_preds = select(s_instance)
         for i, pred in enumerate(s_preds):
             if pred:
-                preds[winners[i]] = True
+                preds[indexes[i]] = True
+
+    return preds
+
+
+def bubble(instance, k=1) -> int:
+    """
+    A bubble sort to find the top-k elements.
+    """
+    indexes = list(range(len(instance["candidates"])))
+    n = len(indexes)
+
+    for i in range(k):
+        for j in range(n - i - 2, 0, -1):
+            greater = compare(
+                instance={
+                    "anchor": instance["anchor"],
+                    "cpair": [
+                        instance["candidates"][indexes[j + 1]],
+                        instance["candidates"][indexes[j]],
+                    ],
+                }
+            )
+            if greater:
+                indexes[j], indexes[j + 1] = indexes[j + 1], indexes[j]
+
+    preds = [False] * len(instance["candidates"])
+    if k == 1:
+        m_instance = {
+            "record_left": instance["anchor"],
+            "record_right": instance["candidates"][indexes[0]],
+        }
+        preds[indexes[0]] = match(m_instance)
+    else:
+        s_instance = {
+            "anchor": instance["anchor"],
+            "candidates": [instance["candidates"][idx] for idx in indexes[:k]],
+        }
+        s_preds = select(s_instance)
+        for i, pred in enumerate(s_preds):
+            if pred:
+                preds[indexes[i]] = True
 
     return preds
 
