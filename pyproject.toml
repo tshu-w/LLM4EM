@@ -13,7 +13,7 @@ useLibraryCodeForTypes = true
 [tool.ruff]
 select = ["E", "F", "I", "UP"]
 fix = true
-ignore = ["E501"]
+ignore = ["E501", "E402"]
 target-version = "py311"
 
 # https://github.com/timothycrosley/isort/

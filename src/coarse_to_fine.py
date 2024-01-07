@@ -1,6 +1,13 @@
+import math
 import re
+from collections.abc import Iterable, Iterator
+from functools import partial
 from pathlib import Path
 from typing import Literal
+
+import torch
+
+torch.nn.CrossEntropyLoss = partial(torch.nn.CrossEntropyLoss, reduction="none")
 
 import pandas as pd
 from diskcache import Cache
@@ -10,8 +17,96 @@ from rich import print
 from sklearn.metrics import classification_report, confusion_matrix
 from tenacity import retry, stop_after_attempt, wait_exponential
 from tqdm.contrib.concurrent import thread_map
+from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
 
-cache = Cache("results/diskcache/comparing")
+cache = Cache("results/diskcache/c2f")
+MODEL_DIR = Path("/ceph_home/arknet/hf_models/")
+MODEL_NAME = "flan-t5-xxl"
+cache_hf = Cache(f"results/diskcache/{MODEL_NAME}")
+TOKENIZER = AutoTokenizer.from_pretrained(MODEL_DIR / MODEL_NAME)
+MODEL = None
+MODEL = AutoModelForSeq2SeqLM.from_pretrained(MODEL_DIR / MODEL_NAME, device_map="auto")
+BATCH_SIZE = 32
+TEMPLATE = Template(
+    """Which of the following two records is more similar to the given record, i.e., there is no inconsistency in entity attributes? Answer only "Record A" or "Record B".
+
+Given entity record:
+{{ anchor }}
+
+Record A: {{ cpair[0] }}
+Record B: {{ cpair[1] }}
+"""
+)
+
+
+def chunks(iterable: Iterable, n: int) -> Iterator[Iterable]:
+    """Yield successive n-sized chunks from iterable."""
+    size = iterable.shape[0] if hasattr(iterable, "shape") else len(iterable)
+    for i in range(0, size, n):
+        yield iterable[i : i + n]
+
+
+def argmax(iterable):
+    return max(enumerate(iterable), key=lambda x: x[1])[0]
+
+
+@cache_hf.memoize()
+@torch.no_grad()
+def cal_log_probs(
+    sources: list[str],
+    targets: list[str],
+    tokenizer=TOKENIZER,
+    model=MODEL,
+) -> list[float]:
+    inputs = tokenizer(
+        text=sources,
+        text_target=targets,
+        padding=True,
+        truncation=True,
+        return_tensors="pt",
+    ).to("cuda")
+    inputs["labels"][inputs["labels"] == tokenizer.pad_token_id] = -100
+    outputs = model(**inputs, return_dict=True)
+    log_probs = (-outputs.loss).view(inputs.labels.size(0), -1).mean(dim=1)
+    return log_probs.tolist()
+
+
+def compare(
+    instance,
+    template=Template(
+        """Which of the following two records is more similar to the given record, i.e., there is no inconsistency in entity attributes? Answer only "Record A" or "Record B".
+
+Given entity record:
+{{ anchor }}
+
+Record A: {{ cpair[0] }}
+Record B: {{ cpair[1] }}
+"""
+    ),
+) -> bool:
+    sources = [
+        template.render(
+            anchor=instance["anchor"],
+            cpair=instance["cpair"],
+        ),
+        template.render(
+            anchor=instance["anchor"],
+            cpair=instance["cpair"],
+        ),
+        template.render(
+            anchor=instance["anchor"],
+            cpair=instance["cpair"][::-1],
+        ),
+        template.render(
+            anchor=instance["anchor"],
+            cpair=instance["cpair"][::-1],
+        ),
+    ]
+    targets = ["Record A", "Record B", "Record A", "Record B"]
+    log_probs = cal_log_probs(sources, targets)
+    probs = [math.exp(log_prob) for log_prob in log_probs]
+
+    return probs[0] + probs[3] > probs[1] + probs[2]
 
 
 @cache.memoize()
@@ -23,45 +118,6 @@ def chat_complete(
     **kwargs,
 ):
     return client.chat.completions.create(messages=messages, model=model, **kwargs)
-
-
-def compare(
-    instance,
-    client=OpenAI(),
-    model="gpt-3.5-turbo",
-    template=Template(
-        """Which of the following two records is more similar to the given record, i.e., there is no inconsistency in entity attributes? Answer only "A" or "B".
-
-Given entity record:
-{{ anchor }}
-
-Record A: {{ cpair[0] }}
-Record B: {{ cpair[1] }}
-"""
-    ),
-) -> bool | None:
-    response = chat_complete(
-        messages=[
-            {
-                "role": "user",
-                "content": template.render(
-                    anchor=instance["anchor"],
-                    cpair=instance["cpair"],
-                ),
-            }
-        ],
-        model=model,
-        logprobs=True,
-        seed=42,
-        temperature=0.0,
-        max_tokens=5,
-    )
-    if "A" in response.choices[0].message.content.strip():
-        return True
-    elif "B" in response.choices[0].message.content.strip():
-        return False
-    else:
-        return None
 
 
 def match(
@@ -136,13 +192,35 @@ Candidate records:{% for candidate in candidates %}
 
 def coarse_to_fine(
     instance,
-    mode: Literal["bubble", "knockout"] = "bubble",
+    mode: Literal["all", "knockout", "bubble"] = "all",
     k=1,
 ) -> list[bool]:
     indexes = list(range(len(instance["candidates"])))
     n = len(indexes)
 
-    if mode == "bubble":
+    if mode == "all":
+        candidates = instance["candidates"]
+        pairs = [
+            (candidates[i], candidates[j]) for i in indexes for j in indexes if i != j
+        ]
+        sources = [
+            TEMPLATE.render(anchor=instance["anchor"], cpair=p)
+            for p in pairs
+            for _ in range(2)
+        ]
+        targets = ["Record A", "Record B"] * len(pairs)
+        pair_indexes = [k for i in indexes for j in indexes if i != j for k in (i, j)]
+
+        log_probs = []
+        for bs, bt in zip(chunks(sources, BATCH_SIZE), chunks(targets, BATCH_SIZE)):
+            log_probs.extend(cal_log_probs(bs, bt))
+
+        probs = [0] * len(indexes)
+        for i, k in enumerate(pair_indexes):
+            probs[k] += math.exp(log_probs[i])
+
+        indexes = [x for _, x in sorted(zip(probs, indexes), reverse=True)]
+    elif mode == "bubble":
         for i in range(k):
             for j in range(n - i - 2, 0, -1):
                 greater = compare(
@@ -219,9 +297,9 @@ if __name__ == "__main__":
         ]
 
         preds_lst = thread_map(
-            lambda it: coarse_to_fine(it, mode="bubble", k=1),
+            lambda it: coarse_to_fine(it, mode="all", k=1),
             instances,
-            max_workers=16,
+            max_workers=1,
         )
         preds = [pred for preds in preds_lst for pred in preds]
         labels = [label for it in instances for label in it["labels"]]
