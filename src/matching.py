@@ -54,8 +54,6 @@ Record 2: {{ record_right }}"""
 if __name__ == "__main__":
     for file in Path("data/llm4em").glob("*.csv"):
         dataset = file.stem
-        if dataset == "dblp-scholar":
-            continue
         print(f"[bold magenta]{dataset}[/bold magenta]")
         df = pd.read_csv(file)
 
