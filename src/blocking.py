@@ -5,12 +5,22 @@ import pandas as pd
 from retriv import SparseRetriever
 
 Datasets = {
-    "walmart-amazon": Path("data/blocking/walmart-amazon_homo/"),
-    "amazon-google": Path("data/blocking/amazon-google/"),
-    "dblp-scholar": Path("data/blocking/dblp-scholar"),
-    "dblp-acm": Path("data/blocking/dblp-acm"),
-    "abt-buy": Path("data/blocking/abt-buy_heter"),
-    # "wdc":
+    "abt-buy": (Path("data/pyJedAI/data/ccer/D2"), ("abt.csv", "buy.csv"), "|"),
+    "amazon-google": (Path("data/pyJedAI/data/ccer/D3"), ("amazon.csv", "gp.csv"), "#"),
+    "dblp-acm": (Path("data/pyJedAI/data/ccer/D4"), ("dblp.csv", "acm.csv"), "%"),
+    "dblp-scholar": (
+        Path("data/pyJedAI/data/ccer/D9"),
+        ("dblp.csv", "scholar.csv"),
+        ">",
+    ),
+    "imdb-tmdb": (Path("data/pyJedAI/data/ccer/D5"), ("imdb.csv", "tmdb.csv"), "|"),
+    "imdb-tvdb": (Path("data/pyJedAI/data/ccer/D6"), ("imdb.csv", "tvdb.csv"), "|"),
+    "tmdb-tvdb": (Path("data/pyJedAI/data/ccer/D7"), ("tmdb.csv", "tvdb.csv"), "|"),
+    "walmart-amazon": (
+        Path("data/pyJedAI/data/ccer/D8"),
+        ("walmart.csv", "amazon.csv"),
+        "|",
+    ),
 }
 
 nltk.download = lambda *args, **kwargs: None
@@ -28,11 +38,11 @@ def blocking(
     dataset: str,
     dfs: list[pd.DataFrame],
     matches: set[tuple],
-    K: int = 20,
+    K: int = 10,
 ):
     try:
         retriever = SparseRetriever.load(f"{dataset}-index")
-        raise FileNotFoundError
+        # raise FileNotFoundError
     except FileNotFoundError:
         retriever = SparseRetriever(index_name=f"{dataset}-index")
         retriever = retriever.index(
@@ -55,14 +65,13 @@ def blocking(
 
 
 if __name__ == "__main__":
-    for dataset, path in Datasets.items():
-        dfs = [
-            pd.read_csv(file, index_col="id") for file in sorted(path.glob("*_*.csv"))
-        ]
+    for dataset, (path, files, sep) in Datasets.items():
+        print(dataset)
+        dfs = [pd.read_csv(path / f, index_col="id", sep=sep) for f in files]
         for df in dfs:
             df.fillna("", inplace=True)
         matches = set(
-            pd.read_csv(path / "matches.csv").itertuples(index=False, name=None)
+            pd.read_csv(path / "gt.csv", sep=sep).itertuples(index=False, name=None)
         )
 
         candidates_k = blocking(dataset, dfs, matches)
