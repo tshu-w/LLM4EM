@@ -73,6 +73,9 @@ if __name__ == "__main__":
             continue
         print(f"[bold magenta]{dataset}[/bold magenta]")
         df = pd.read_csv(file)
+        from sklearn.utils import shuffle
+
+        df = shuffle(df, random_state=42)
 
         groupby = list(
             df.groupby("record_left")[["record_right", "label"]]
