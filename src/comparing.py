@@ -127,9 +127,8 @@ Candidate records:{% for candidate in candidates %}
     preds = [False] * len(instance["candidates"])
     if idx:
         idx = int(idx.group(1))
-        idx = max(idx, 1)
-        idx = min(idx, len(instance["candidates"]))
-        preds[idx - 1] = True
+        if 1 <= idx <= len(instance["candidates"]):
+            preds[idx - 1] = True
 
     return preds
 
