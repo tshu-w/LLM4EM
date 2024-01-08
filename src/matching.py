@@ -64,7 +64,7 @@ if __name__ == "__main__":
             max_workers=16,
         )
         labels = df["label"]
-        print(classification_report(labels[: len(preds)], preds))
+        print(classification_report(labels[: len(preds)], preds, digits=4))
         print(confusion_matrix(labels[: len(preds)], preds))
 
         # fdf = df[df["label"] != preds]

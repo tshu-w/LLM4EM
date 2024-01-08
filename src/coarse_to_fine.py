@@ -301,5 +301,5 @@ if __name__ == "__main__":
         preds = [pred for preds in preds_lst for pred in preds]
         labels = [label for it in instances for label in it["labels"]]
 
-        print(classification_report(labels[: len(preds)], preds))
+        print(classification_report(labels[: len(preds)], preds, digits=4))
         print(confusion_matrix(labels[: len(preds)], preds))
