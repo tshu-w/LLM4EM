@@ -192,7 +192,7 @@ Candidate records:{% for candidate in candidates %}
 def coarse_to_fine(
     instance,
     mode: Literal["all", "knockout", "bubble"] = "all",
-    k=1,
+    topK=1,
 ) -> list[bool]:
     indexes = list(range(len(instance["candidates"])))
     n = len(indexes)
@@ -220,7 +220,7 @@ def coarse_to_fine(
 
         indexes = [x for _, x in sorted(zip(probs, indexes), reverse=True)]
     elif mode == "bubble":
-        for i in range(k):
+        for i in range(topK):
             for j in range(n - i - 2, 0, -1):
                 greater = compare(
                     instance={
@@ -234,7 +234,7 @@ def coarse_to_fine(
                 if greater:
                     indexes[j], indexes[j + 1] = indexes[j + 1], indexes[j]
     elif mode == "knockout":
-        while len(indexes) > k:
+        while len(indexes) > topK:
             winners = []
             for i in range(0, len(indexes), 2):
                 if i + 1 < len(indexes):
@@ -257,7 +257,7 @@ def coarse_to_fine(
             indexes = winners
 
     preds = [False] * len(instance["candidates"])
-    if k == 1:
+    if topK == 1:
         m_instance = {
             "record_left": instance["anchor"],
             "record_right": instance["candidates"][indexes[0]],
@@ -266,7 +266,7 @@ def coarse_to_fine(
     else:
         s_instance = {
             "anchor": instance["anchor"],
-            "candidates": [instance["candidates"][idx] for idx in indexes[:k]],
+            "candidates": [instance["candidates"][idx] for idx in indexes[:topK]],
         }
         s_preds = select(s_instance)
         for i, pred in enumerate(s_preds):
@@ -294,7 +294,7 @@ if __name__ == "__main__":
         ]
 
         preds_lst = thread_map(
-            lambda it: coarse_to_fine(it, mode="all", k=1),
+            lambda it: coarse_to_fine(it, mode="all", topK=1),
             instances,
             max_workers=1,
         )

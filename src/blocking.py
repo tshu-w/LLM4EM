@@ -38,7 +38,7 @@ def blocking(
     dataset: str,
     dfs: list[pd.DataFrame],
     matches: set[tuple],
-    K: int = 10,
+    topK: int = 10,
 ):
     try:
         retriever = SparseRetriever.load(f"{dataset}-index")
@@ -55,11 +55,11 @@ def blocking(
     candidates = retriever.bsearch(queries, show_progress=True)
     candidates_k = list()
     for lc, v in candidates.items():
-        for rc in sorted(v, key=v.get, reverse=True)[:K]:
+        for rc in sorted(v, key=v.get, reverse=True)[:topK]:
             candidates_k.append((lc, rc))
 
     recall = len(matches & set(candidates_k)) / len(matches)
-    print(f"Recall@{K}: {recall:.4f}")
+    print(f"Recall@{topK}: {recall:.4f}")
 
     return candidates_k
 
