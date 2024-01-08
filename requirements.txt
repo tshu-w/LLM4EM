@@ -1,16 +1,10 @@
-langchain
 openai
-
 transformers
 scikit-learn
-
-sentence-transformers
-faiss-cpu
 
 retriv
 diskcache
 
 # dev tools
 jupyterlab
-shtab
-ray[tune]
+seaborn
