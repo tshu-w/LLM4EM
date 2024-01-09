@@ -1,4 +1,5 @@
 import re
+from functools import wraps
 from pathlib import Path
 
 import pandas as pd
@@ -13,6 +14,39 @@ from tqdm.contrib.concurrent import thread_map
 cache = Cache("results/diskcache/selecting")
 
 
+# From https://openai.com/pricing#language-models at 2024.01.01
+MODEL_COST_PER_1K_TOKENS = {
+    "gpt-3.5-turbo": {"prompt": 0.0015, "completion": 0.0020},
+    "gpt-3.5-turbo-0301": {"prompt": 0.0015, "completion": 0.0020},
+    "gpt-3.5-turbo-0613": {"prompt": 0.0015, "completion": 0.0020},
+    "gpt-3.5-turbo-1106": {"prompt": 0.0010, "completion": 0.0020},
+    "gpt-4": {"prompt": 0.03, "completion": 0.06},
+}
+# Global variable to accumulate cost
+ACCUMULATED_COST = 0
+
+
+def api_cost_decorator(model_name):
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            response = func(*args, **kwargs)
+            cost = (
+                MODEL_COST_PER_1K_TOKENS[model_name]["prompt"]
+                * response.usage.prompt_tokens
+                + MODEL_COST_PER_1K_TOKENS[model_name]["completion"]
+                * response.usage.completion_tokens
+            ) / 1000
+            global ACCUMULATED_COST
+            ACCUMULATED_COST += cost
+            return response
+
+        return wrapper
+
+    return decorator
+
+
+@api_cost_decorator(model_name="gpt-3.5-turbo")
 @cache.memoize()
 @retry(stop=stop_after_attempt(10), wait=wait_exponential(multiplier=1, max=10))
 def chat_complete(
@@ -68,6 +102,7 @@ Candidate records:{% for candidate in candidates %}
 if __name__ == "__main__":
     ttl_preds = []
     ttl_labels = []
+    ttl_cost = 0
     for file in Path("data/llm4em").glob("*.csv"):
         dataset = file.stem
         print(f"[bold magenta]{dataset}[/bold magenta]")
@@ -97,8 +132,14 @@ if __name__ == "__main__":
 
         print(classification_report(labels[: len(preds)], preds, digits=4))
         print(confusion_matrix(labels[: len(preds)], preds))
+        print(f"Cost: {ACCUMULATED_COST:.2f}")
 
         ttl_preds.extend(preds)
         ttl_labels.extend(labels)
+        ttl_cost += ACCUMULATED_COST
+        ACCUMULATED_COST = 0
 
     print(classification_report(ttl_labels, ttl_preds, digits=4))
+    print(
+        f"Average Cost: {ttl_cost / len(list(Path('data/llm4em').glob('*.csv'))):.2f}"
+    )
