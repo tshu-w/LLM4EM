@@ -4,6 +4,7 @@ scikit-learn
 
 retriv
 diskcache
+tenacity
 
 # dev tools
 jupyterlab
