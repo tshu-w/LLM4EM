@@ -66,6 +66,8 @@ Candidate records:{% for candidate in candidates %}
 
 
 if __name__ == "__main__":
+    ttl_preds = []
+    ttl_labels = []
     for file in Path("data/llm4em").glob("*.csv"):
         dataset = file.stem
         print(f"[bold magenta]{dataset}[/bold magenta]")
@@ -95,3 +97,8 @@ if __name__ == "__main__":
 
         print(classification_report(labels[: len(preds)], preds, digits=4))
         print(confusion_matrix(labels[: len(preds)], preds))
+
+        ttl_preds.extend(preds)
+        ttl_labels.extend(labels)
+
+    print(classification_report(ttl_labels, ttl_preds, digits=4))

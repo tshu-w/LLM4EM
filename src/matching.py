@@ -52,6 +52,8 @@ Record 2: {{ record_right }}"""
 
 
 if __name__ == "__main__":
+    ttl_preds = []
+    ttl_labels = []
     for file in Path("data/llm4em").glob("*.csv"):
         dataset = file.stem
         print(f"[bold magenta]{dataset}[/bold magenta]")
@@ -74,3 +76,8 @@ if __name__ == "__main__":
         # print(fp)
         # print("False negatives")
         # print(fn)
+
+        ttl_preds.extend(preds)
+        ttl_labels.extend(labels)
+
+    print(classification_report(ttl_labels, ttl_preds, digits=4))
