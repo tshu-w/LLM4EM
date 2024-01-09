@@ -58,8 +58,10 @@ def blocking(
         for rc in sorted(v, key=v.get, reverse=True)[:topK]:
             candidates_k.append((lc, rc))
 
-    recall = len(matches & set(candidates_k)) / len(matches)
-    print(f"Recall@{topK}: {recall:.4f}")
+    recall = len(matches & set(candidates_k)) / len(matches) * 100
+    pos = len(matches & set(candidates_k)) / len(candidates_k) * 100
+    print(f"Recall@{topK}: {recall:.2f}")
+    print(f"% Pos: {pos:.2f}")
 
     return candidates_k
 
