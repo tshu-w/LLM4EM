@@ -20,7 +20,7 @@ from tqdm.contrib.concurrent import thread_map
 from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
 
 cache = Cache("results/diskcache/c2f")
-MODEL_DIR = Path("/ceph_home/arknet/hf_models/")
+MODEL_DIR = Path("models/hf_models/")
 MODEL_NAME = "flan-t5-xxl"
 cache_hf = Cache(f"results/diskcache/{MODEL_NAME}")
 TOKENIZER = AutoTokenizer.from_pretrained(MODEL_DIR / MODEL_NAME)
