@@ -302,10 +302,7 @@ def coarse_to_fine(
         "anchor": instance["anchor"],
         "candidates": [instance["candidates"][idx] for idx in indexes[:topK]],
     }
-    if topK == 1:
-        n_preds = match(n_instance)
-    else:
-        n_preds = select(n_instance)
+    n_preds = select(n_instance)
 
     for i, pred in enumerate(n_preds):
         preds[indexes[i]] = pred
