@@ -106,24 +106,33 @@ def match(
 Record 1: {{ record_left }}
 Record 2: {{ record_right }}"""
     ),
-) -> bool:
-    response = chat_complete(
-        messages=[
-            {
-                "role": "user",
-                "content": template.render(
-                    record_left=instance["record_left"],
-                    record_right=instance["record_right"],
-                ),
-            }
-        ],
-        model=model,
-        logprobs=True,
-        seed=42,
-        temperature=0.0,
-        max_tokens=5,
-    )
-    return response.choices[0].message.content.strip() not in ["No", "No.", "no", "no."]
+) -> list[bool]:
+    preds = []
+    for candidate in instance["candidates"]:
+        response = chat_complete(
+            messages=[
+                {
+                    "role": "user",
+                    "content": template.render(
+                        record_left=instance["anchor"],
+                        record_right=candidate,
+                    ),
+                }
+            ],
+            model=model,
+            logprobs=True,
+            seed=42,
+            temperature=0.0,
+            max_tokens=5,
+        )
+        pred = response.choices[0].message.content.strip() not in [
+            "No",
+            "No.",
+            "no",
+            "no.",
+        ]
+        preds.append(pred)
+    return preds
 
 
 def select(
@@ -213,21 +222,17 @@ def coarse_to_fine(
             indexes = winners
 
     preds = [False] * len(instance["candidates"])
+    n_instance = {
+        "anchor": instance["anchor"],
+        "candidates": [instance["candidates"][idx] for idx in indexes[:topK]],
+    }
     if topK == 1:
-        m_instance = {
-            "record_left": instance["anchor"],
-            "record_right": instance["candidates"][indexes[0]],
-        }
-        preds[indexes[0]] = match(m_instance)
+        n_preds = match(n_instance)
     else:
-        s_instance = {
-            "anchor": instance["anchor"],
-            "candidates": [instance["candidates"][idx] for idx in indexes[:topK]],
-        }
-        s_preds = select(s_instance)
-        for i, pred in enumerate(s_preds):
-            if pred:
-                preds[indexes[i]] = True
+        n_preds = select(n_instance)
+
+    for i, pred in enumerate(n_preds):
+        preds[indexes[i]] = pred
 
     return preds
 

@@ -65,24 +65,33 @@ def match(
 Record 1: {{ record_left }}
 Record 2: {{ record_right }}"""
     ),
-) -> bool:
-    response = chat_complete(
-        messages=[
-            {
-                "role": "user",
-                "content": template.render(
-                    record_left=instance["record_left"],
-                    record_right=instance["record_right"],
-                ),
-            }
-        ],
-        model=model,
-        logprobs=True,
-        seed=42,
-        temperature=0.0,
-        max_tokens=5,
-    )
-    return response.choices[0].message.content.strip() not in ["No", "No.", "no", "no."]
+) -> list[bool]:
+    preds = []
+    for candidate in instance["candidates"]:
+        response = chat_complete(
+            messages=[
+                {
+                    "role": "user",
+                    "content": template.render(
+                        record_left=instance["anchor"],
+                        record_right=candidate,
+                    ),
+                }
+            ],
+            model=model,
+            logprobs=True,
+            seed=42,
+            temperature=0.0,
+            max_tokens=5,
+        )
+        pred = response.choices[0].message.content.strip() not in [
+            "No",
+            "No.",
+            "no",
+            "no.",
+        ]
+        preds.append(pred)
+    return preds
 
 
 if __name__ == "__main__":
@@ -94,13 +103,24 @@ if __name__ == "__main__":
         print(f"[bold magenta]{dataset}[/bold magenta]")
         df = pd.read_csv(file)
 
-        instances = df.to_dict("records")
-        preds = thread_map(
+        groupby = list(
+            df.groupby("record_left")[["record_right", "label"]]
+            .apply(lambda x: x.to_dict("list"))
+            .to_dict()
+            .items()
+        )
+        instances = [
+            {"anchor": k, "candidates": v["record_right"], "labels": v["label"]}
+            for k, v in groupby
+        ]
+
+        preds_lst = thread_map(
             match,
             instances,
             max_workers=16,
         )
-        labels = df["label"]
+        preds = [pred for preds in preds_lst for pred in preds]
+        labels = [label for it in instances for label in it["labels"]]
         print(classification_report(labels[: len(preds)], preds, digits=4))
         print(confusion_matrix(labels[: len(preds)], preds))
         print(f"Cost: {ACCUMULATED_COST:.2f}")
