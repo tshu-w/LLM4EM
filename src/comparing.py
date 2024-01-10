@@ -125,12 +125,7 @@ Record 2: {{ record_right }}"""
             temperature=0.0,
             max_tokens=5,
         )
-        pred = response.choices[0].message.content.strip() not in [
-            "No",
-            "No.",
-            "no",
-            "no.",
-        ]
+        pred = not response.choices[0].message.content.strip().lower().startswith("no")
         preds.append(pred)
     return preds
 
