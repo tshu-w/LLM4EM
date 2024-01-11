@@ -257,18 +257,18 @@ def coarse_to_fine(
         indexes = [x for _, x in sorted(zip(probs, indexes), reverse=True)]
     elif mode == "bubble":
         for i in range(topK):
-            for j in range(n - i - 2, 0, -1):
+            for j in range(n - i - 1, 0, -1):
                 greater = compare(
                     instance={
                         "anchor": instance["anchor"],
                         "cpair": [
-                            instance["candidates"][indexes[j + 1]],
                             instance["candidates"][indexes[j]],
+                            instance["candidates"][indexes[j - 1]],
                         ],
                     }
                 )
                 if greater:
-                    indexes[j], indexes[j + 1] = indexes[j + 1], indexes[j]
+                    indexes[j], indexes[j - 1] = indexes[j - 1], indexes[j]
     elif mode == "knockout":
         while len(indexes) > topK:
             winners = []
