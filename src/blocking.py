@@ -3,6 +3,7 @@ from pathlib import Path
 import nltk
 import pandas as pd
 from retriv import SparseRetriever
+from sklearn.utils import shuffle
 
 Datasets = {
     "abt-buy": (Path("data/pyJedAI/data/ccer/D2"), ("abt.csv", "buy.csv"), "|"),
@@ -112,4 +113,5 @@ if __name__ == "__main__":
             axis=1,
         )
         print(candidates)
+        candidates = shuffle(candidates, random_state=42)
         candidates.to_csv(Path("data/llm4em") / f"{dataset}.csv", index=False)
