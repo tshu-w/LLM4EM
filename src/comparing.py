@@ -160,7 +160,7 @@ Candidate records:{% for candidate in candidates %}
         max_tokens=5,
     )
 
-    idx = re.search(r"([\d+])", response.choices[0].message.content.strip())
+    idx = re.search(r"\[(\d+)\]", response.choices[0].message.content.strip())
     preds = [False] * len(instance["candidates"])
     if idx:
         idx = int(idx.group(1))
