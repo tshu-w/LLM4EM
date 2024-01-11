@@ -145,8 +145,8 @@ def api_cost_decorator(model_name):
 @retry(stop=stop_after_attempt(10), wait=wait_exponential(multiplier=1, max=10))
 def chat_complete(
     messages,
-    client=OpenAI(),
     model="gpt-3.5-turbo",
+    client=OpenAI(),
     **kwargs,
 ):
     return client.chat.completions.create(messages=messages, model=model, **kwargs)
