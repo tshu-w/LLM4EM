@@ -84,7 +84,7 @@ Record 2: {{ record_right }}"""
             temperature=0.0,
             max_tokens=5,
         )
-        pred = not response.choices[0].message.content.strip().lower().startswith("no")
+        pred = "yes" in response.choices[0].message.content.strip().lower()
         preds.append(pred)
     return preds
 
