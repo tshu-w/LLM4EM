@@ -22,6 +22,7 @@ MODEL_COST_PER_1K_TOKENS = {
     "gpt-3.5-turbo-1106": {"prompt": 0.0010, "completion": 0.0020},
     "gpt-4": {"prompt": 0.03, "completion": 0.06},
 }
+LLM = "gpt-3.5-turbo"
 # Global variable to accumulate cost
 ACCUMULATED_COST = 0
 
@@ -46,12 +47,12 @@ def api_cost_decorator(model_name):
     return decorator
 
 
-@api_cost_decorator(model_name="gpt-3.5-turbo")
+@api_cost_decorator(model_name=LLM)
 @cache.memoize()
 @retry(stop=stop_after_attempt(10), wait=wait_exponential(multiplier=1, max=10))
 def chat_complete(
     messages,
-    model="gpt-3.5-turbo",
+    model=LLM,
     client=OpenAI(),
     **kwargs,
 ):
@@ -60,7 +61,7 @@ def chat_complete(
 
 def select(
     instance,
-    model="gpt-3.5-turbo",
+    model=LLM,
     template=Template(
         """Select a record from the following candidates that refers to the same real-world entity as the given record. Answer only with the corresponding record number surrounded by "[]" or "[0]" if there is none.
 
