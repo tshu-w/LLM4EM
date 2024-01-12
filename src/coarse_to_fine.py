@@ -26,7 +26,7 @@ cache_hf = Cache(f"results/diskcache/{MODEL_NAME}")
 TOKENIZER = AutoTokenizer.from_pretrained(MODEL_DIR / MODEL_NAME)
 MODEL = None
 MODEL = AutoModelForSeq2SeqLM.from_pretrained(MODEL_DIR / MODEL_NAME, device_map="auto")
-BATCH_SIZE = 32
+BATCH_SIZE = 2
 TEMPLATE = Template(
     """Which of the following two records is more similar to the given record, i.e., there is no inconsistency in entity attributes? Answer only "Record A" or "Record B".
 
