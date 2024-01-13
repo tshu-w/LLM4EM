@@ -300,7 +300,7 @@ if __name__ == "__main__":
         ]
 
         preds_lst = thread_map(
-            coarse_to_fine,
+            lambda it: coarse_to_fine(it, mode="bubble", topK=4),
             instances,
             max_workers=16,
         )
