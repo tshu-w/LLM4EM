@@ -73,8 +73,8 @@ Record A: {{ cpair[0] }}
 Record B: {{ cpair[1] }}
 """
     ),
-) -> bool | None:
-    response = chat_complete(
+) -> int:
+    response1 = chat_complete(
         messages=[
             {
                 "role": "user",
@@ -90,12 +90,34 @@ Record B: {{ cpair[1] }}
         temperature=0.0,
         max_tokens=5,
     )
-    if "A" in response.choices[0].message.content.strip():
-        return True
-    elif "B" in response.choices[0].message.content.strip():
-        return False
-    else:
-        return None
+    response2 = chat_complete(
+        messages=[
+            {
+                "role": "user",
+                "content": template.render(
+                    anchor=instance["anchor"],
+                    cpair=instance["cpair"][::-1],
+                ),
+            }
+        ],
+        model=model,
+        logprobs=True,
+        seed=42,
+        temperature=0.0,
+        max_tokens=5,
+    )
+    res = 0
+    if "A" in response1.choices[0].message.content.strip():
+        res += 1
+    elif "B" in response1.choices[0].message.content.strip():
+        res -= 1
+
+    if "B" in response2.choices[0].message.content.strip():
+        res += 1
+    elif "A" in response2.choices[0].message.content.strip():
+        res -= 1
+
+    return res
 
 
 def match(
@@ -173,13 +195,36 @@ Candidate records:{% for candidate in candidates %}
 
 def coarse_to_fine(
     instance,
-    mode: Literal["bubble", "knockout"] = "bubble",
+    mode: Literal["all", "knockout", "bubble"] = "all",
     topK=1,
 ) -> list[bool]:
     indexes = list(range(len(instance["candidates"])))
     n = len(indexes)
 
-    if mode == "bubble":
+    if mode == "all":
+        scores = [0] * n
+        for i in range(n):
+            for j in range(n):
+                if i != j:
+                    greater = compare(
+                        instance={
+                            "anchor": instance["anchor"],
+                            "cpair": [
+                                instance["candidates"][i],
+                                instance["candidates"][j],
+                            ],
+                        }
+                    )
+                    if greater > 0:
+                        scores[i] += 1
+                    elif greater < 0:
+                        scores[j] += 1
+                    else:
+                        scores[i] += 0.5
+                        scores[j] += 0.5
+
+        indexes = [idx for _, idx in sorted(zip(scores, indexes), reverse=True)]
+    elif mode == "bubble":
         for i in range(topK):
             for j in range(n - i - 1, 0, -1):
                 greater = compare(
@@ -191,7 +236,7 @@ def coarse_to_fine(
                         ],
                     }
                 )
-                if greater:
+                if greater >= 0:
                     indexes[j], indexes[j - 1] = indexes[j - 1], indexes[j]
     elif mode == "knockout":
         while len(indexes) > topK:
@@ -207,7 +252,7 @@ def coarse_to_fine(
                             ],
                         }
                     )
-                    if greater:
+                    if greater >= 0:
                         winners.append(indexes[i])
                     else:
                         winners.append(indexes[i + 1])
