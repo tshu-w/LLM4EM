@@ -307,10 +307,9 @@ def coarse_to_fine(
 
 
 if __name__ == "__main__":
-    ttl_preds = []
-    ttl_labels = []
-    ttl_cost = 0
-    for file in sorted(Path("data/llm4em").glob("*.csv")):
+    results = {}
+    dataset_files = sorted(Path("data/llm4em").glob("*.csv"))
+    for file in dataset_files:
         dataset = file.stem
         print(f"[bold magenta]{dataset}[/bold magenta]")
         df = pd.read_csv(file)
@@ -327,7 +326,7 @@ if __name__ == "__main__":
         ]
 
         preds_lst = thread_map(
-            lambda it: coarse_to_fine(it, mode="all", topK=4),
+            coarse_to_fine,
             instances,
             max_workers=1,
         )
@@ -338,12 +337,21 @@ if __name__ == "__main__":
         print(confusion_matrix(labels[: len(preds)], preds))
         print(f"Cost: {ACCUMULATED_COST:.2f}")
 
-        ttl_preds.extend(preds)
-        ttl_labels.extend(labels)
-        ttl_cost += ACCUMULATED_COST
+        results[dataset] = classification_report(
+            labels[: len(preds)], preds, output_dict=True
+        )["True"]
+        results[dataset].pop("support")
+        for k, v in results[dataset].items():
+            results[dataset][k] = v * 100
+        results[dataset]["cost"] = ACCUMULATED_COST
         ACCUMULATED_COST = 0
 
-    print(classification_report(ttl_labels, ttl_preds, digits=4))
-    print(
-        f"Average Cost: {ttl_cost / len(list(Path('data/llm4em').glob('*.csv'))):.2f}"
-    )
+    results["mean"] = {
+        "precision": sum(v["precision"] for v in results.values()) / len(results),
+        "recall": sum(v["recall"] for v in results.values()) / len(results),
+        "f1-score": sum(v["f1-score"] for v in results.values()) / len(results),
+        "cost": sum(v["cost"] for v in results.values()) / len(results),
+    }
+    df = pd.DataFrame.from_dict(results, orient="index")
+    print(df)
+    print(df.to_csv(float_format="%.2f", index=False))
