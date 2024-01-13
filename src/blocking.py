@@ -39,7 +39,7 @@ def blocking(
     dataset: str,
     dfs: list[pd.DataFrame],
     matches: set[tuple],
-    topK: int = 10,
+    topK: int = 20,
 ):
     try:
         retriever = SparseRetriever.load(f"{dataset}-index")
@@ -53,16 +53,14 @@ def blocking(
         retriever.save()
 
     queries = list(generate_docs(dfs[0]))
-    candidates = retriever.bsearch(queries, show_progress=True)
+    candidates = retriever.bsearch(queries, show_progress=True, cutoff=topK)
     candidates_k = list()
     for lc, v in candidates.items():
-        for rc in sorted(v, key=v.get, reverse=True)[:topK]:
+        for rc in sorted(v, key=v.get, reverse=True):
             candidates_k.append((lc, rc))
 
     recall = len(matches & set(candidates_k)) / len(matches) * 100
-    pos = len(matches & set(candidates_k)) / len(candidates_k) * 100
     print(f"Recall@{topK}: {recall:.2f}")
-    print(f"% Pos: {pos:.2f}")
 
     return candidates_k
 
@@ -79,22 +77,20 @@ if __name__ == "__main__":
                 inplace=True,
                 errors="ignore",
             )
-        matches = set(
-            pd.read_csv(path / "gt.csv", sep=sep).itertuples(index=False, name=None)
-        )
 
-        candidates_k = blocking(dataset, dfs, matches)
-        candidates = pd.DataFrame(candidates_k, columns=["id_left", "id_right"])
-        print(len(candidates))
+        matches = pd.read_csv(path / "gt.csv", sep=sep)
+        matches.columns = ["id_left", "id_right"]
+        match_set = set(matches.itertuples(index=False, name=None))
+
+        candidates = blocking(dataset, dfs, match_set)
+        candidates = pd.DataFrame(candidates, columns=["id_left", "id_right"])
+
         ldf = dfs[0]
         rdf = dfs[-1]
         ldf["record"] = ldf.astype(str).agg(" ".join, axis=1).str.strip()
         ldf = ldf[["record"]]
         rdf["record"] = rdf.astype(str).agg(" ".join, axis=1).str.strip()
         rdf = rdf[["record"]]
-
-        # Sample records
-        ldf = ldf.sample(n=200, random_state=42)
 
         ldf = pd.merge(
             candidates,
@@ -115,9 +111,41 @@ if __name__ == "__main__":
             suffixes=("_left", "_right"),
         )
         candidates["label"] = candidates.apply(
-            lambda row: (row["id_left"], row["id_right"]) in matches,
+            lambda row: (row["id_left"], row["id_right"]) in match_set,
             axis=1,
         )
+
+        # Sample 200 records, 100 with matches, 100 without matches
+        topK = 10
+        candidates_K = (
+            candidates.groupby("id_left")
+            .filter(lambda x: len(x) > topK)
+            .groupby("id_left")
+            .head(topK + 1)
+        )
+        wm = candidates_K[candidates_K["label"]].sample(n=100, random_state=42)[
+            "id_left"
+        ]
+        wom = (
+            candidates_K[~candidates_K["id_left"].isin(wm)]["id_left"]
+            .drop_duplicates()
+            .sample(n=100, random_state=42)
+        )
+
+        to_remove = set(
+            matches[matches["id_left"].isin(wom)].itertuples(index=False, name=None)
+        )
+        candidates = candidates[
+            ~candidates.apply(
+                lambda row: (row["id_left"], row["id_right"]) in to_remove, axis=1
+            )
+        ]
+
+        candidates = candidates[
+            candidates["id_left"].isin(wm) | candidates["id_left"].isin(wom)
+        ]
+        candidates = candidates.groupby("id_left").head(topK).reset_index(drop=True)
         print(candidates)
+
         candidates = shuffle(candidates, random_state=42)
         candidates.to_csv(Path("data/llm4em") / f"{dataset}.csv", index=False)
