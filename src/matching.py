@@ -94,7 +94,7 @@ if __name__ == "__main__":
     ttl_preds = []
     ttl_labels = []
     ttl_cost = 0
-    for file in Path("data/llm4em").glob("*.csv"):
+    for file in sorted(Path("data/llm4em").glob("*.csv")):
         dataset = file.stem
         print(f"[bold magenta]{dataset}[/bold magenta]")
         df = pd.read_csv(file)
