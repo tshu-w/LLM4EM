@@ -74,6 +74,11 @@ if __name__ == "__main__":
         for df in dfs:
             df.fillna("", inplace=True)
             df.drop(columns=["description"], inplace=True, errors="ignore")
+            df.drop(
+                columns=["http://dbpedia.org/ontology/abstract"],
+                inplace=True,
+                errors="ignore",
+            )
         matches = set(
             pd.read_csv(path / "gt.csv", sep=sep).itertuples(index=False, name=None)
         )
