@@ -108,14 +108,18 @@ if __name__ == "__main__":
         df = pd.read_csv(file)
 
         groupby = list(
-            df.groupby("record_left")[["record_right", "label"]]
+            df.groupby("id_left")[["record_left", "record_right", "label"]]
             .apply(lambda x: x.to_dict("list"))
             .to_dict()
             .items()
         )
         instances = [
-            {"anchor": k, "candidates": v["record_right"], "labels": v["label"]}
-            for k, v in groupby
+            {
+                "anchor": v["record_left"][0],
+                "candidates": v["record_right"],
+                "labels": v["label"],
+            }
+            for _, v in groupby
         ]
 
         preds_lst = thread_map(
