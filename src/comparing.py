@@ -317,6 +317,7 @@ if __name__ == "__main__":
         results[dataset].pop("support")
         for k, v in results[dataset].items():
             results[dataset][k] = v * 100
+
         results[dataset]["cost"] = ACCUMULATED_COST
         ACCUMULATED_COST = 0
 
