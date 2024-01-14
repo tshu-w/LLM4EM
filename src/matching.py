@@ -63,7 +63,8 @@ def match(
     template=Template(
         """Do the two entity records refer to the same real-world entity? Answer only "Yes" or "No".
 Record 1: {{ record_left }}
-Record 2: {{ record_right }}"""
+Record 2: {{ record_right }}
+"""
     ),
 ) -> list[bool]:
     preds = []
