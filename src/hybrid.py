@@ -339,13 +339,13 @@ def coarse_to_fine(
         indexes = pairwise_rank(instance)
 
     preds = [False] * len(instance["candidates"])
-    n_instance = {
+    instance_k = {
         "anchor": instance["anchor"],
         "candidates": [instance["candidates"][idx] for idx in indexes[:topK]],
     }
-    n_preds = select(n_instance)
-    for i, pred in enumerate(n_preds):
-        preds[indexes[i]] = pred
+    preds_k = select(instance_k)
+    for i, pred in enumerate(preds_k):
+        preds[indexes[i]] = True
 
     return preds
 
