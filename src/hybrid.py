@@ -1,5 +1,6 @@
 import math
 import re
+from collections import deque
 from collections.abc import Iterable, Iterator
 from functools import partial, wraps
 from pathlib import Path
@@ -22,7 +23,8 @@ from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
 cache = Cache("results/diskcache/c2f")
 MODEL_DIR = Path("models/hf_models/")
 MODEL_NAME = "flan-t5-xxl"
-cache_hf = Cache(f"results/diskcache/{MODEL_NAME}")
+RANKING_STRATEGY = "comparing"
+cache_hf = Cache(f"results/diskcache/{MODEL_NAME}_{RANKING_STRATEGY}")
 TOKENIZER = AutoTokenizer.from_pretrained(MODEL_DIR / MODEL_NAME)
 MODEL = None
 MODEL = AutoModelForSeq2SeqLM.from_pretrained(MODEL_DIR / MODEL_NAME, device_map="auto")
@@ -73,19 +75,7 @@ def cal_log_probs(
     return log_probs.tolist()
 
 
-def compare(
-    instance,
-    template=Template(
-        """Which of the following two records is more likely to refer to the same real-world entity as the given record? Answer only "A" or "B".
-
-Given entity record:
-{{ anchor }}
-
-Record A: {{ cpair[0] }}
-Record B: {{ cpair[1] }}
-"""
-    ),
-) -> bool:
+def compare(instance, template, options) -> bool:
     sources = [
         template.render(
             anchor=instance["anchor"],
@@ -104,7 +94,7 @@ Record B: {{ cpair[1] }}
             cpair=instance["cpair"][::-1],
         ),
     ]
-    targets = ["Record A", "Record B", "Record A", "Record B"]
+    targets = options * 2
     log_probs = cal_log_probs(sources, targets)
     probs = [math.exp(log_prob) for log_prob in log_probs]
 
@@ -120,7 +110,7 @@ Record 2: {{ record_right }}
 """
     ),
 ) -> list[int]:
-    inputs = [
+    sources = [
         template.render(
             record_left=instance["anchor"],
             record_right=candidate,
@@ -129,7 +119,9 @@ Record 2: {{ record_right }}
         for _ in range(2)
     ]
     targets = ["Yes", "No"] * len(instance["candidates"])
-    log_probs = cal_log_probs(inputs, targets)
+    log_probs = []
+    for bs, bt in zip(chunks(sources, BATCH_SIZE), chunks(targets, BATCH_SIZE)):
+        log_probs.extend(cal_log_probs(bs, bt))
     probs = [0] * len(instance["candidates"])
     for i in range(len(instance["candidates"])):
         if log_probs[i * 2] >= log_probs[i * 2 + 1]:
@@ -145,7 +137,7 @@ Record 2: {{ record_right }}
 def pairwise_rank(
     instance,
     mode: Literal["all", "knockout", "bubble"] = "all",
-    topK: int = 4,
+    topK: int = 1,
     template=Template(
         """Which of the following two records is more likely to refer to the same real-world entity as the given record? Answer only "A" or "B".
 
@@ -156,6 +148,7 @@ Record A: {{ cpair[0] }}
 Record B: {{ cpair[1] }}
 """
     ),
+    options: list[str] = ["A", "B"],
 ) -> list[int]:
     indexes = list(range(len(instance["candidates"])))
     n = len(indexes)
@@ -170,7 +163,7 @@ Record B: {{ cpair[1] }}
             for p in pairs
             for _ in range(2)
         ]
-        targets = ["A", "B"] * len(pairs)
+        targets = options * len(pairs)
         pair_indexes = [k for i in indexes for j in indexes if i != j for k in (i, j)]
 
         log_probs = []
@@ -192,7 +185,9 @@ Record B: {{ cpair[1] }}
                             instance["candidates"][indexes[j]],
                             instance["candidates"][indexes[j - 1]],
                         ],
-                    }
+                    },
+                    template=template,
+                    options=options,
                 )
                 if greater:
                     indexes[j], indexes[j - 1] = indexes[j - 1], indexes[j]
@@ -208,7 +203,9 @@ Record B: {{ cpair[1] }}
                                 instance["candidates"][indexes[i]],
                                 instance["candidates"][indexes[i + 1]],
                             ],
-                        }
+                        },
+                        template=template,
+                        options=options,
                     )
                     if greater:
                         winners.append(indexes[i])
@@ -328,7 +325,7 @@ Candidate records:{% for candidate in candidates %}
     return preds
 
 
-def coarse_to_fine(
+def hybrid(
     instance,
     ranking_strategy: Literal["matching", "comparing"] = "matching",
     topK: int = 1,
@@ -338,14 +335,18 @@ def coarse_to_fine(
     elif ranking_strategy == "comparing":
         indexes = pairwise_rank(instance)
 
+    indexes_k = indexes[:topK]
+    dq = deque(indexes[:topK])
+    dq.rotate(2)
+    indexes_k = list(dq)
     preds = [False] * len(instance["candidates"])
     instance_k = {
         "anchor": instance["anchor"],
-        "candidates": [instance["candidates"][idx] for idx in indexes[:topK]],
+        "candidates": [instance["candidates"][idx] for idx in indexes_k],
     }
     preds_k = select(instance_k)
     for i, pred in enumerate(preds_k):
-        preds[indexes[i]] = True
+        preds[indexes_k[i]] = pred
 
     return preds
 
@@ -374,7 +375,7 @@ if __name__ == "__main__":
         ]
 
         preds_lst = thread_map(
-            lambda it: coarse_to_fine(it, ranking_strategy="matching", topK=4),
+            lambda it: hybrid(it, ranking_strategy=RANKING_STRATEGY, topK=4),
             instances,
             max_workers=1,
         )
