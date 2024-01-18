@@ -121,7 +121,7 @@ if __name__ == "__main__":
             candidates.groupby("id_left")
             .filter(lambda x: len(x) > topK)
             .groupby("id_left")
-            .head(topK + 1)
+            .head(topK)
         )
         wm = candidates_K[candidates_K["label"]].sample(n=100, random_state=42)[
             "id_left"
