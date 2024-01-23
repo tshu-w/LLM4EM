@@ -1,7 +1,6 @@
 import math
 import re
 from collections import deque
-from collections.abc import Iterable, Iterator
 from functools import partial, wraps
 from pathlib import Path
 from typing import Literal
@@ -16,6 +15,7 @@ from jinja2 import Template
 from openai import OpenAI
 from rich import print
 from sklearn.metrics import classification_report, confusion_matrix
+from sklearn.utils import gen_batches
 from tenacity import retry, stop_after_attempt, wait_exponential
 from tqdm.contrib.concurrent import thread_map
 from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
@@ -41,13 +41,6 @@ MODEL_COST_PER_1K_TOKENS = {
 LLM = "gpt-3.5-turbo"
 # Global variable to accumulate cost
 ACCUMULATED_COST = 0
-
-
-def chunks(iterable: Iterable, n: int) -> Iterator[Iterable]:
-    """Yield successive n-sized chunks from iterable."""
-    size = iterable.shape[0] if hasattr(iterable, "shape") else len(iterable)
-    for i in range(0, size, n):
-        yield iterable[i : i + n]
 
 
 def argmax(iterable):
@@ -120,8 +113,8 @@ Record 2: {{ record_right }}
     ]
     targets = ["Yes", "No"] * len(instance["candidates"])
     log_probs = []
-    for bs, bt in zip(chunks(sources, BATCH_SIZE), chunks(targets, BATCH_SIZE)):
-        log_probs.extend(cal_log_probs(bs, bt))
+    for bslice in gen_batches(len(sources), BATCH_SIZE):
+        log_probs.extend(cal_log_probs(sources[bslice], targets[bslice]))
     probs = [0] * len(instance["candidates"])
     for i in range(len(instance["candidates"])):
         if log_probs[i * 2] >= log_probs[i * 2 + 1]:
@@ -167,8 +160,8 @@ Record B: {{ cpair[1] }}
         pair_indexes = [k for i in indexes for j in indexes if i != j for k in (i, j)]
 
         log_probs = []
-        for bs, bt in zip(chunks(sources, BATCH_SIZE), chunks(targets, BATCH_SIZE)):
-            log_probs.extend(cal_log_probs(bs, bt))
+        for bslice in gen_batches(len(sources), BATCH_SIZE):
+            log_probs.extend(cal_log_probs(sources[bslice], targets[bslice]))
 
         probs = [0] * len(indexes)
         for i, k in enumerate(pair_indexes):
