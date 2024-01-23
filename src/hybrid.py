@@ -23,7 +23,7 @@ from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
 cache = Cache("results/diskcache/c2f")
 MODEL_DIR = Path("models/hf_models/")
 MODEL_NAME = "flan-t5-xxl"
-RANKING_STRATEGY = "comparing"
+RANKING_STRATEGY = "matching"
 cache_hf = Cache(f"results/diskcache/{MODEL_NAME}_{RANKING_STRATEGY}")
 TOKENIZER = AutoTokenizer.from_pretrained(MODEL_DIR / MODEL_NAME)
 MODEL = None
