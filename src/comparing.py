@@ -1,4 +1,3 @@
-import re
 from functools import wraps
 from pathlib import Path
 from typing import Literal
@@ -63,7 +62,7 @@ def compare(
     instance,
     model=LLM,
     template=Template(
-        """Which of the following two records is more similar to the given record, i.e., there is no inconsistency in entity attributes? Answer only "A" or "B".
+        """Which of the following two records is more likely to refer to the same real-world entity as the given record? Answer only with the corresponding record identifier "A" or "B".
 
 Given entity record:
 {{ anchor }}
@@ -149,51 +148,11 @@ Record 2: {{ record_right }}
         )
         pred = "yes" in response.choices[0].message.content.strip().lower()
         preds.append(pred)
-    return preds
-
-
-def select(
-    instance,
-    model=LLM,
-    template=Template(
-        """Select a record from the following candidates that refers to the same real-world entity as the given record. Answer only with the corresponding record number surrounded by "[]" or "[0]" if there is none.
-
-Given entity record:
-{{ anchor }}
-
-Candidate records:{% for candidate in candidates %}
-[{{ loop.index }}] {{ candidate }}{% endfor %}
-"""
-    ),
-) -> list[bool]:
-    response = chat_complete(
-        messages=[
-            {
-                "role": "user",
-                "content": template.render(
-                    anchor=instance["anchor"],
-                    candidates=instance["candidates"],
-                ),
-            }
-        ],
-        model=model,
-        logprobs=True,
-        seed=42,
-        temperature=0.0,
-        max_tokens=5,
-    )
-
-    idx = re.search(r"\[(\d+)\]", response.choices[0].message.content.strip())
-    preds = [False] * len(instance["candidates"])
-    if idx:
-        idx = int(idx.group(1))
-        if 1 <= idx <= len(instance["candidates"]):
-            preds[idx - 1] = True
 
     return preds
 
 
-def coarse_to_fine(
+def hybrid(
     instance,
     mode: Literal["all", "knockout", "bubble"] = "all",
     topK=1,
@@ -266,10 +225,7 @@ def coarse_to_fine(
         "anchor": instance["anchor"],
         "candidates": [instance["candidates"][idx] for idx in indexes[:topK]],
     }
-    if topK == 1:
-        n_preds = match(n_instance)
-    else:
-        n_preds = select(n_instance)
+    n_preds = match(n_instance)
 
     for i, pred in enumerate(n_preds):
         preds[indexes[i]] = pred
@@ -301,7 +257,7 @@ if __name__ == "__main__":
         ]
 
         preds_lst = thread_map(
-            lambda it: coarse_to_fine(it, mode="bubble", topK=4),
+            lambda it: hybrid(it, mode="bubble"),
             instances,
             max_workers=16,
         )
