@@ -61,7 +61,7 @@ Record B: {{ cpair[1] }}
         temperature=0.0,
         logprobs=True,
         top_logprobs=3,
-        max_tokens=5,
+        max_tokens=3,
     )
     response2 = chat_complete(
         messages=[
@@ -78,7 +78,7 @@ Record B: {{ cpair[1] }}
         temperature=0.0,
         logprobs=True,
         top_logprobs=3,
-        max_tokens=5,
+        max_tokens=3,
     )
     prob = 0
     if "A" in response1.choices[0].message.content.strip():

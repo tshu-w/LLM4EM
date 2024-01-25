@@ -58,7 +58,7 @@ Record 2: {{ record_right }}
             temperature=0.0,
             logprobs=True,
             top_logprobs=3,
-            max_tokens=5,
+            max_tokens=3,
         )
         if "yes" in response.choices[0].logprobs.content[0].token.strip().lower():
             prob = math.exp(response.choices[0].logprobs.content[0].logprob)
