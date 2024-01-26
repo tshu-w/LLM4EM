@@ -27,7 +27,10 @@ def chat_complete(
     client=OpenAI(),
     **kwargs,
 ):
-    return client.chat.completions.create(messages=messages, model=model, **kwargs)
+    response = client.chat.completions.create(messages=messages, model=model, **kwargs)
+    if response.choices is None:
+        raise ValueError(f"Error response: {response}")
+    return response
 
 
 def score(
