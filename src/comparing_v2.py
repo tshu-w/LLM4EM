@@ -1,4 +1,3 @@
-import math
 from pathlib import Path
 from typing import Literal
 
@@ -48,7 +47,7 @@ Record A: {{ cpair[0] }}
 Record B: {{ cpair[1] }}
 """
     ),
-) -> float:
+) -> int:
     response1 = chat_complete(
         messages=[
             {
@@ -83,18 +82,20 @@ Record B: {{ cpair[1] }}
         top_logprobs=3,
         max_tokens=3,
     )
-    prob = 0
-    if "A" in response1.choices[0].message.content.strip():
-        prob += math.exp(response1.choices[0].logprobs.content[0].logprob)
-    elif "B" in response1.choices[0].message.content.strip():
-        prob -= math.exp(response1.choices[0].logprobs.content[0].logprob)
+    score = 0
+    content1 = response1.choices[0].message.content.strip()
+    content2 = response2.choices[0].message.content.strip()
+    if "A" in content1:
+        score += 1
+    elif "B" in content1:
+        score -= 1
 
-    if "B" in response2.choices[0].message.content.strip():
-        prob += math.exp(response1.choices[0].logprobs.content[0].logprob)
-    elif "A" in response2.choices[0].message.content.strip():
-        prob -= math.exp(response1.choices[0].logprobs.content[0].logprob)
+    if "B" in content2:
+        score += 1
+    elif "A" in content2:
+        score -= 1
 
-    return prob
+    return score
 
 
 def pairwise_rank(
