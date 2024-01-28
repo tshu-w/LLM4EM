@@ -61,8 +61,8 @@ Record B: {{ cpair[1] }}
         model=model,
         seed=42,
         temperature=0.0,
-        logprobs=True,
-        top_logprobs=3,
+        logprobs=model.startswith("gpt"),
+        top_logprobs=3 if model.startswith("gpt") else None,
         max_tokens=3,
     )
     response2 = chat_complete(
@@ -78,8 +78,8 @@ Record B: {{ cpair[1] }}
         model=model,
         seed=42,
         temperature=0.0,
-        logprobs=True,
-        top_logprobs=3,
+        logprobs=model.startswith("gpt"),
+        top_logprobs=3 if model.startswith("gpt") else None,
         max_tokens=3,
     )
     score = 0
@@ -176,7 +176,7 @@ def compare(
     mode: Literal["all", "bubble", "knockout"] = "bubble",
     topK: int = 1,
 ) -> list[bool]:
-    indexes = pairwise_rank(instance, model=model, mode=mode)
+    indexes = pairwise_rank(instance, model=model, mode=mode, topK=topK)
     preds = [False] * len(instance["candidates"])
     n_instance = {
         "anchor": instance["anchor"],

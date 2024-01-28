@@ -43,8 +43,9 @@ Record 1: {{ record_left }}
 Record 2: {{ record_right }}
 """
     ),
+    use_prob: bool = False,
 ) -> list[float]:
-    probs = []
+    scores = []
     for candidate in instance["candidates"]:
         response = chat_complete(
             messages=[
@@ -59,36 +60,45 @@ Record 2: {{ record_right }}
             model=model,
             seed=42,
             temperature=0.0,
-            logprobs=True,
-            top_logprobs=3,
+            logprobs=model.startswith("gpt"),
+            top_logprobs=3 if model.startswith("gpt") else None,
             max_tokens=3,
         )
-        if "yes" in response.choices[0].logprobs.content[0].token.strip().lower():
-            prob = math.exp(response.choices[0].logprobs.content[0].logprob)
-        elif "no" in response.choices[0].logprobs.content[0].token.strip().lower():
-            prob = -math.exp(response.choices[0].logprobs.content[0].logprob)
+        if use_prob:
+            assert model.startswith("gpt")
+            content = response.choices[0].logprobs.content[0]
+            if "yes" in content.token.strip().lower():
+                scores.append(math.exp(content.logprob))
+            elif "no" in content.token.strip().lower():
+                scores.append(-math.exp(content.logprob))
+            else:
+                scores.append(0.0)
         else:
-            prob = 0
+            content = response.choices[0].message.content.strip().lower()
+            if "yes" in content:
+                scores.append(1)
+            elif "no" in content:
+                scores.append(-1)
+            else:
+                scores.append(0)
 
-        probs.append(prob)
-
-    return probs
+    return scores
 
 
 def pointwise_rank(instance, model: str = LLM) -> list[int]:
-    probs = score(instance, model=model)
+    scores = score(instance, model=model, use_prob=True)
     indexes = list(range(len(instance["candidates"])))
-    indexes = [x for _, x in sorted(zip(probs, indexes), reverse=True)]
+    indexes = [x for _, x in sorted(zip(scores, indexes), reverse=True)]
     return indexes
 
 
 def match(instance, model: str = LLM, single_match: bool = False) -> list[bool]:
-    probs = score(instance, model=model)
+    scores = score(instance, model=model, use_prob=single_match)
     if single_match:
-        max_prob = max(probs)
-        preds = [prob >= max_prob and prob > 0 for prob in probs]
+        max_score = max(scores)
+        preds = [sc >= max_score and sc > 0 for sc in scores]
     else:
-        preds = [prob > 0 for prob in probs]
+        preds = [sc > 0 for sc in scores]
 
     return preds
 

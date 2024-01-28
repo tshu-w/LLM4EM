@@ -60,8 +60,8 @@ Candidate records:{% for candidate in candidates %}
         model=model,
         seed=42,
         temperature=0.0,
-        logprobs=True,
-        top_logprobs=3,
+        logprobs=model.startswith("gpt"),
+        top_logprobs=3 if model.startswith("gpt") else None,
         max_tokens=3,
     )
 

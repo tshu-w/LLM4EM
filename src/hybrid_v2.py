@@ -13,7 +13,7 @@ import matching_v2
 import selecting_v2
 
 RANKING_STRATEGY = "matching"
-LLM = "gpt-3.5-turbo-1106"
+LLM = "gpt-3.5-turbo-0613"
 
 
 def hybrid(
@@ -25,13 +25,13 @@ def hybrid(
     if ranking_strategy == "matching":
         indexes = matching_v2.pointwise_rank(instance, model=model)
     elif ranking_strategy == "comparing":
-        indexes = comparing_v2.pairwise_rank(instance, model=model)
+        indexes = comparing_v2.pairwise_rank(instance, model=model, topK=topK)
 
     indexes_k = indexes[:topK]
+    preds = [False] * len(instance["candidates"])
     dq = deque(indexes[:topK])
     dq.rotate(2)
     indexes_k = list(dq)
-    preds = [False] * len(instance["candidates"])
     instance_k = {
         "anchor": instance["anchor"],
         "candidates": [instance["candidates"][idx] for idx in indexes_k],
