@@ -1,6 +1,7 @@
 import re
 from functools import wraps
 from pathlib import Path
+from typing import Literal
 
 import pandas as pd
 from diskcache import Cache
@@ -11,7 +12,7 @@ from sklearn.metrics import classification_report, confusion_matrix
 from tenacity import retry, stop_after_attempt, wait_exponential
 from tqdm.contrib.concurrent import thread_map
 
-cache = Cache("results/diskcache/selecting")
+cache = Cache("results/diskcache/comparing")
 
 # From https://openai.com/pricing#language-models at 2024.01.01
 MODEL_COST_PER_1K_TOKENS = {
@@ -58,6 +59,79 @@ def chat_complete(
     return client.chat.completions.create(messages=messages, model=model, **kwargs)
 
 
+def compare(
+    instance,
+    model=LLM,
+    template=Template(
+        """Which of the following two records is more similar to the given record, i.e., there is no inconsistency in entity attributes? Answer only "A" or "B".
+
+Given entity record:
+{{ anchor }}
+
+Record A: {{ cpair[0] }}
+Record B: {{ cpair[1] }}
+"""
+    ),
+) -> bool | None:
+    response = chat_complete(
+        messages=[
+            {
+                "role": "user",
+                "content": template.render(
+                    anchor=instance["anchor"],
+                    cpair=instance["cpair"],
+                ),
+            }
+        ],
+        model=model,
+        logprobs=True,
+        seed=42,
+        temperature=0.0,
+        max_tokens=5,
+    )
+    if "Neither" in response.choices[0].message.content.strip():
+        return None
+    elif "A" in response.choices[0].message.content.strip():
+        return True
+    elif "B" in response.choices[0].message.content.strip():
+        return False
+    else:
+        return None
+
+
+def match(
+    instance,
+    model=LLM,
+    template=Template(
+        """Do the two entity records refer to the same real-world entity? Answer only "Yes" or "No".
+Record 1: {{ record_left }}
+Record 2: {{ record_right }}
+"""
+    ),
+) -> list[bool]:
+    preds = []
+    for candidate in instance["candidates"]:
+        response = chat_complete(
+            messages=[
+                {
+                    "role": "user",
+                    "content": template.render(
+                        record_left=instance["anchor"],
+                        record_right=candidate,
+                    ),
+                }
+            ],
+            model=model,
+            logprobs=True,
+            seed=42,
+            temperature=0.0,
+            max_tokens=5,
+        )
+        pred = "yes" in response.choices[0].message.content.strip().lower()
+        preds.append(pred)
+    return preds
+
+
 def select(
     instance,
     model=LLM,
@@ -99,6 +173,74 @@ Candidate records:{% for candidate in candidates %}
     return preds
 
 
+def coarse_to_fine(
+    instance,
+    mode: Literal["bubble", "knockout"] = "bubble",
+    topK=1,
+) -> list[bool]:
+    indexes = list(range(len(instance["candidates"])))
+    n = len(indexes)
+
+    if mode == "bubble":
+        for i in range(topK):
+            for j in range(n - i - 1, 0, -1):
+                greater = compare(
+                    instance={
+                        "anchor": instance["anchor"],
+                        "cpair": [
+                            instance["candidates"][indexes[j]],
+                            instance["candidates"][indexes[j - 1]],
+                        ],
+                    }
+                )
+                if greater:
+                    indexes[j], indexes[j - 1] = indexes[j - 1], indexes[j]
+    elif mode == "knockout":
+        while len(indexes) > topK:
+            winners = []
+            for i in range(0, len(indexes), 2):
+                if i + 1 < len(indexes):
+                    greater = compare(
+                        instance={
+                            "anchor": instance["anchor"],
+                            "cpair": [
+                                instance["candidates"][indexes[i]],
+                                instance["candidates"][indexes[i + 1]],
+                            ],
+                        }
+                    )
+                    if greater:
+                        winners.append(indexes[i])
+                    else:
+                        winners.append(indexes[i + 1])
+                else:
+                    winners.append(indexes[i])
+
+            indexes = winners
+
+    preds = [False] * len(instance["candidates"])
+    n_instance = {
+        "anchor": instance["anchor"],
+        "candidates": [instance["candidates"][idx] for idx in indexes[:topK]],
+    }
+    n_preds = match(n_instance)
+    for i, pred in enumerate(n_preds):
+        preds[indexes[i]] = True
+
+    # if topK == 1:
+    #     n_preds = match(n_instance)
+    # else:
+    #     n_preds = select(n_instance)
+
+    # for i, pred in enumerate(n_preds):
+    #     preds[indexes[i]] = pred
+
+    for idx in indexes[:topK]:
+        preds[idx] = True
+
+    return preds
+
+
 if __name__ == "__main__":
     results = {}
     dataset_files = sorted(Path("data/llm4em").glob("*.csv"))
@@ -123,9 +265,9 @@ if __name__ == "__main__":
         ]
 
         preds_lst = thread_map(
-            select,
+            lambda it: coarse_to_fine(it, mode="bubble", topK=1),
             instances,
-            max_workers=16,
+            max_workers=32,
         )
         preds = [pred for preds in preds_lst for pred in preds]
         labels = [label for it in instances for label in it["labels"]]
