@@ -2,6 +2,7 @@ from functools import wraps
 
 
 class APICostCalculator:
+    # fmt: off
     _model_cost_per_1k_tokens = {
         # https://platform.openai.com/docs/deprecations/
         "gpt-3.5-turbo": {"prompt": 0.0015, "completion": 0.0020},
@@ -17,24 +18,17 @@ class APICostCalculator:
         "meta-llama/Llama-2-7b-chat-hf": {"prompt": 0.00015, "completion": 0.00015},
         "meta-llama/Llama-2-13b-chat-hf": {"prompt": 0.00025, "completion": 0.00025},
         "meta-llama/Llama-2-70b-chat-hf": {"prompt": 0.001, "completion": 0.001},
-        "mistralai/Mixtral-8x7B-Instruct-v0.1": {
-            "prompt": 0.0005,
-            "completion": 0.0005,
-        },
+        "mistralai/Mistral-7B-Instruct-v0.1": {"prompt": 0.00015, "completion": 0.00015},
+        "mistralai/Mixtral-8x7B-Instruct-v0.1": {"prompt": 0.0005, "completion": 0.0005},
         # https://replicate.com/pricing
         "meta/llama-2-7b": {"prompt": 0.00005, "completion": 0.00025},
         "meta/llama-2-13b": {"prompt": 0.00010, "completion": 0.00050},
         "meta/llama-2-70b": {"prompt": 0.00065, "completion": 0.00275},
         "mistralai/mistral-7b-v0.1": {"prompt": 0.00005, "completion": 0.00025},
-        "mistralai/mistral-7b-instruct-v0.2": {
-            "prompt": 0.00005,
-            "completion": 0.00025,
-        },
-        "mistralai/mixtral-8x7b-instruct-v0.1": {
-            "prompt": 0.00030,
-            "completion": 0.00100,
-        },
+        "mistralai/mistral-7b-instruct-v0.2": {"prompt": 0.00005, "completion": 0.00025},
+        "mistralai/mixtral-8x7b-instruct-v0.1": {"prompt": 0.00030, "completion": 0.00100},
     }
+    # fmt: on
 
     def __init__(self, model_name: str = "gpt-3.5-turbo"):
         if model_name not in self._model_cost_per_1k_tokens:
