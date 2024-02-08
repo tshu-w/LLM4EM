@@ -50,7 +50,6 @@ def blocking(
             generate_docs(dfs[-1]),
             show_progress=True,
         )
-        retriever.save()
 
     queries = list(generate_docs(dfs[0]))
     candidates = retriever.bsearch(queries, show_progress=True, cutoff=topK)
@@ -135,17 +134,28 @@ if __name__ == "__main__":
         to_remove = set(
             matches[matches["id_left"].isin(wom)].itertuples(index=False, name=None)
         )
-        candidates = candidates[
+        candidates_sample = candidates[
             ~candidates.apply(
                 lambda row: (row["id_left"], row["id_right"]) in to_remove, axis=1
             )
         ]
 
-        candidates = candidates[
-            candidates["id_left"].isin(wm) | candidates["id_left"].isin(wom)
+        candidates_sample = candidates_sample[
+            candidates_sample["id_left"].isin(wm)
+            | candidates_sample["id_left"].isin(wom)
         ]
-        candidates = candidates.groupby("id_left").head(topK).reset_index(drop=True)
-        print(candidates)
+        candidates_sample = candidates_sample.groupby("id_left").head(topK)
+        candidates_remains = candidates[~candidates.index.isin(candidates_sample.index)]
+        assert len(candidates_sample) + len(candidates_remains) == len(candidates)
 
-        candidates = shuffle(candidates, random_state=42)
-        candidates.to_csv(Path("data/llm4em") / f"{dataset}.csv", index=False)
+        candidates_sample = shuffle(
+            candidates_sample.reset_index(drop=True), random_state=42
+        )
+        candidates_sample.to_csv(Path("data/llm4em") / f"{dataset}.csv", index=False)
+
+        candidates_remains = shuffle(
+            candidates_remains.reset_index(drop=True), random_state=42
+        )
+        candidates_remains.to_csv(
+            Path("data/llm4em/remains") / f"{dataset}.csv", index=False
+        )

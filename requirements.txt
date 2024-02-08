@@ -4,8 +4,8 @@ scikit-learn
 
 fschat[model_worker]
 
-retriv
 diskcache
+retriv
 tenacity
 
 # dev tools
