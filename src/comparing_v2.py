@@ -232,11 +232,17 @@ if __name__ == "__main__":
         results[dataset].pop("support")
         for k, v in results[dataset].items():
             results[dataset][k] = v * 100
+        results[dataset]["cost"] = (
+            api_cost_calculator.cost + matching_v2.api_cost_calculator.cost
+        )
+        api_cost_calculator.cost = 0
+        matching_v2.api_cost_calculator.cost = 0
 
     results["mean"] = {
         "precision": sum(v["precision"] for v in results.values()) / len(results),
         "recall": sum(v["recall"] for v in results.values()) / len(results),
         "f1-score": sum(v["f1-score"] for v in results.values()) / len(results),
+        "cost": sum(v["cost"] for v in results.values()) / len(results),
     }
     df = pd.DataFrame.from_dict(results, orient="index")
     print(df)

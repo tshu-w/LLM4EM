@@ -27,7 +27,7 @@ cache = Cache(f"results/diskcache/matching_{MODEL_NAME}")
 
 
 @cache.memoize(name="cal_log_probs")
-@torch.no_grad()
+@torch.inference_mode()
 def cal_log_probs(
     sources: list[str],
     targets: list[str],

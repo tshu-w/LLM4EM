@@ -8,8 +8,8 @@ from sklearn.metrics import classification_report, confusion_matrix
 from tqdm.contrib.concurrent import thread_map
 
 # isort: split
-import comparing_v2
-import matching_v2
+import comparing_hf
+import matching_hf
 import selecting_v2
 
 RANKING_STRATEGY = "matching"
@@ -23,9 +23,9 @@ def hybrid(
     topK: int = 1,
 ) -> list[bool]:
     if ranking_strategy == "matching":
-        indexes = matching_v2.pointwise_rank(instance, model=model)
+        indexes = matching_hf.pointwise_rank(instance)
     elif ranking_strategy == "comparing":
-        indexes = comparing_v2.pairwise_rank(instance, model=model, topK=topK)
+        indexes = comparing_hf.pairwise_rank(instance, topK=topK)
 
     indexes_k = indexes[:topK]
     preds = [False] * len(instance["candidates"])
@@ -83,13 +83,7 @@ if __name__ == "__main__":
         results[dataset].pop("support")
         for k, v in results[dataset].items():
             results[dataset][k] = v * 100
-        results[dataset]["cost"] = (
-            matching_v2.api_cost_calculator.cost
-            + comparing_v2.api_cost_calculator.cost
-            + selecting_v2.api_cost_calculator.cost
-        )
-        matching_v2.api_cost_calculator.cost = 0
-        comparing_v2.api_cost_calculator.cost = 0
+        results[dataset]["cost"] = selecting_v2.api_cost_calculator.cost
         selecting_v2.api_cost_calculator.cost = 0
 
     results["mean"] = {
@@ -101,6 +95,3 @@ if __name__ == "__main__":
     df = pd.DataFrame.from_dict(results, orient="index")
     print(df)
     print(df.to_csv(float_format="%.2f", index=False))
-    print(f"Matching Cost: {matching_v2.api_cost_calculator.cost:.2f}")
-    print(f"Comparing Cost: {comparing_v2.api_cost_calculator.cost:.2f}")
-    print(f"Selecting Cost: {selecting_v2.api_cost_calculator.cost:.2f}")
