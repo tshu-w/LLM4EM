@@ -51,9 +51,7 @@ Candidate records:{% for candidate in candidates %}
     )
     target = generate(
         source,
-        num_beams=2,
         max_new_tokens=3,
-        length_penalty=0.0,
         return_dict_in_generate=True,
     )
 
