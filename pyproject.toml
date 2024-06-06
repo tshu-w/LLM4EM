@@ -1,14 +1,14 @@
 # https://github.com/microsoft/pyright
 [tool.pyright]
 include = ["src"]
-venv = "LLM4EM"
+venv = "llm4em"
 typeCheckingMode = "off"
 useLibraryCodeForTypes = true
 
 # https://github.com/charliermarsh/ruff
 [tool.ruff]
 fix = true
-target-version = "py310"
+target-version = "py311"
 [tool.ruff.lint]
 select = [
     "E",   # pycodestyle

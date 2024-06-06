@@ -7,45 +7,65 @@ from rich import print
 from sklearn.metrics import classification_report, confusion_matrix
 from tqdm.contrib.concurrent import thread_map
 
-# isort: split
-import comparing_hf
-import matching_hf
-import selecting_v2
+from src.comparing_hf import ComparingHF
+from src.matching_hf import MatchingHF
+from src.selecting import Selecting
 
 RANKING_STRATEGY = "matching"
 LLM = "gpt-3.5-turbo-0613"
 
 
-def hybrid(
-    instance,
-    model: str = LLM,
-    ranking_strategy: Literal["matching", "comparing"] = "matching",
-    topK: int = 1,
-) -> list[bool]:
-    if ranking_strategy == "matching":
-        indexes = matching_hf.pointwise_rank(instance)
-    elif ranking_strategy == "comparing":
-        indexes = comparing_hf.pairwise_rank(instance, topK=topK)
+class ComEM:
+    ranking_strategy: Literal["matching", "comparing"] = "matching"
 
-    indexes_k = indexes[:topK]
-    preds = [False] * len(instance["candidates"])
-    dq = deque(indexes[:topK])
-    dq.rotate(2)
-    indexes_k = list(dq)
-    instance_k = {
-        "anchor": instance["anchor"],
-        "candidates": [instance["candidates"][idx] for idx in indexes_k],
-    }
-    preds_k = selecting_v2.select(instance_k, model=model)
-    for i, pred in enumerate(preds_k):
-        preds[indexes_k[i]] = pred
+    def __init__(
+        self,
+        ranking_model_name: str = "flan-t5-xl",
+        selecting_model_name: str = "gpt-3.5-turbo-0613",
+        ranking_strategy: Literal["matching", "comparing"] = ranking_strategy,
+    ):
+        self.ranking_model_name = ranking_model_name
+        self.selecting_model_name = selecting_model_name
+        if self.ranking_strategy == "matching":
+            self.ranker = MatchingHF(model_name=ranking_model_name)
+        elif self.ranking_strategy == "comparing":
+            self.ranker = ComparingHF(model_name=ranking_model_name)
+        self.selector = Selecting(model_name=selecting_model_name)
 
-    return preds
+    def __call__(self, instance, topK: int = 1) -> list[bool]:
+        if self.ranking_strategy == "matching":
+            indexes = self.ranker.pointwise_rank(instance)
+        elif self.ranking_strategy == "comparing":
+            indexes = self.ranker.pairwise_rank(instance, topK=topK)
+
+        indexes_k = indexes[:topK]
+        preds = [False] * len(instance["candidates"])
+        dq = deque(indexes[:topK])
+        dq.rotate(2)
+        indexes_k = list(dq)
+        instance_k = {
+            "anchor": instance["anchor"],
+            "candidates": [instance["candidates"][idx] for idx in indexes_k],
+        }
+        preds_k = self.selector(instance_k)
+        for i, pred in enumerate(preds_k):
+            preds[indexes_k[i]] = pred
+
+        return preds
+
+    @property
+    def cost(self):
+        return self.selector.cost
+
+    @cost.setter
+    def cost(self, value: int):
+        self.selector.cost = value
 
 
 if __name__ == "__main__":
     results = {}
     dataset_files = sorted(Path("data/llm4em").glob("*.csv"))
+    compound = ComEM()
     for file in dataset_files:
         dataset = file.stem
         print(f"[bold magenta]{dataset}[/bold magenta]")
@@ -67,7 +87,7 @@ if __name__ == "__main__":
         ]
 
         preds_lst = thread_map(
-            lambda it: hybrid(it, ranking_strategy=RANKING_STRATEGY, topK=4),
+            lambda it: compound(it, ranking_strategy=RANKING_STRATEGY, topK=4),
             instances,
             max_workers=16,
         )
@@ -83,8 +103,8 @@ if __name__ == "__main__":
         results[dataset].pop("support")
         for k, v in results[dataset].items():
             results[dataset][k] = v * 100
-        results[dataset]["cost"] = selecting_v2.api_cost_calculator.cost
-        selecting_v2.api_cost_calculator.cost = 0
+        results[dataset]["cost"] = compound.cost
+        compound.cost = 0
 
     results["mean"] = {
         "precision": sum(v["precision"] for v in results.values()) / len(results),

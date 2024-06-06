@@ -1,4 +1,4 @@
-name: LLM4EM
+name: llm4em
 channels:
   - defaults
   - conda-forge

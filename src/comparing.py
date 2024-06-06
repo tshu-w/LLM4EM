@@ -1,5 +1,3 @@
-import argparse
-import math
 from pathlib import Path
 from typing import Literal
 
@@ -8,14 +6,13 @@ from diskcache import Cache
 from jinja2 import Template
 from rich import print
 from sklearn.metrics import classification_report, confusion_matrix
-from sklearn.utils import gen_batches
 from tqdm.contrib.concurrent import thread_map
 
-from src.matching_hf import MatchingHF
-from src.utils import HuggingfaceWrapper
+from src.matching import Matching
+from src.utils import APICostCalculator, openai_chat_complete
 
 
-class ComparingHF:
+class Comparing:
     template = Template(
         """Which of the following two records is more likely to refer to the same real-world entity as the given record? Answer with the corresponding record identifier "Record A" or "Record B".
 
@@ -29,78 +26,66 @@ Record B: {{ cpair[1] }}
 
     def __init__(
         self,
-        model_name: str = "flan-t5-xxl",
+        model_name: str = "gpt-3.5-turbo-0613",
         template: Template = template,
     ):
-        self.wrapper = HuggingfaceWrapper(model_name)
+        self.model = model_name
         self.template = template
-        self.matcher = MatchingHF(model_name)
 
+        self.api_cost_decorator = APICostCalculator(model_name=model_name)
         cache = Cache(f"results/diskcache/comparing_{model_name}")
-        self.wrapper.generate = cache.memoize(name="generate")(self.wrapper.generate)
-        self.wrapper.cal_log_probs = cache.memoize(name="cal_log_probs")(
-            self.wrapper.cal_log_probs
+        self.chat_complete = self.api_cost_decorator(
+            cache.memoize(name="chat_complete")(openai_chat_complete)
         )
+        self.matcher = Matching(model_name=model_name)
 
-    def cmp(self, instance, use_prob: bool = False) -> int:
-        if not use_prob:
-            source1 = self.template.render(
-                anchor=instance["anchor"],
-                cpair=instance["cpair"],
-            )
-            target1 = self.wrapper.generate(
-                source1,
-                max_new_tokens=128,
-                return_dict_in_generate=True,
-            )
-            source2 = self.template.render(
-                anchor=instance["anchor"],
-                cpair=instance["cpair"][::-1],
-            )
-            target2 = self.wrapper.generate(
-                source2,
-                max_new_tokens=128,
-                return_dict_in_generate=True,
-            )
-            score = 0
-            if "Record A" in target1:
-                score += 1
-            elif "Record B" in target1:
-                score -= 1
+    def cmp(self, instance) -> int:
+        response1 = self.chat_complete(
+            messages=[
+                {
+                    "role": "user",
+                    "content": self.template.render(
+                        anchor=instance["anchor"],
+                        cpair=instance["cpair"],
+                    ),
+                }
+            ],
+            model=self.model,
+            seed=42,
+            temperature=0.0,
+            logprobs=self.model.startswith("gpt"),
+            top_logprobs=3 if self.model.startswith("gpt") else None,
+            max_tokens=3,
+        )
+        response2 = self.chat_complete(
+            messages=[
+                {
+                    "role": "user",
+                    "content": self.template.render(
+                        anchor=instance["anchor"],
+                        cpair=instance["cpair"][::-1],
+                    ),
+                }
+            ],
+            model=self.model,
+            seed=42,
+            temperature=0.0,
+            logprobs=self.model.startswith("gpt"),
+            top_logprobs=3 if self.model.startswith("gpt") else None,
+            max_tokens=3,
+        )
+        score = 0
+        content1 = response1.choices[0].message.content.strip()
+        content2 = response2.choices[0].message.content.strip()
+        if "A" in content1:
+            score += 1
+        elif "B" in content1:
+            score -= 1
 
-            if "Record B" in target2:
-                score += 1
-            elif "Record A" in target2:
-                score -= 1
-        else:
-            sources = [
-                self.template.render(
-                    anchor=instance["anchor"],
-                    cpair=instance["cpair"],
-                ),
-                self.template.render(
-                    anchor=instance["anchor"],
-                    cpair=instance["cpair"],
-                ),
-                self.template.render(
-                    anchor=instance["anchor"],
-                    cpair=instance["cpair"][::-1],
-                ),
-                self.template.render(
-                    anchor=instance["anchor"],
-                    cpair=instance["cpair"][::-1],
-                ),
-            ]
-            targets = ["Record A", "Record B", "Record A", "Record B"]
-            log_probs = []
-            for bslice in gen_batches(len(sources), 2):
-                log_probs.extend(
-                    self.wrapper.cal_log_probs(sources[bslice], targets[bslice])
-                )
-
-            score = sum(math.exp(log_probs[i]) for i in [0, 4]) - sum(
-                math.exp(log_probs[i]) for i in [1, 2]
-            )
+        if "B" in content2:
+            score += 1
+        elif "A" in content2:
+            score -= 1
 
         return score
 
@@ -183,10 +168,6 @@ Record B: {{ cpair[1] }}
     ) -> list[bool]:
         indexes = self.pairwise_rank(instance, mode=mode, topK=topK)
         preds = [False] * len(instance["candidates"])
-
-        # for idx in indexes[:topK]:
-        #     preds[idx] = True
-        # return preds
         n_instance = {
             "anchor": instance["anchor"],
             "candidates": [instance["candidates"][idx] for idx in indexes[:topK]],
@@ -198,17 +179,19 @@ Record B: {{ cpair[1] }}
 
         return preds
 
+    @property
+    def cost(self):
+        return self.api_cost_decorator.cost + self.matcher.cost
+
+    @cost.setter
+    def cost(self, value: int):
+        self.api_cost_decorator.cost = self.matcher.cost = value
+
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--model", type=str, default="flan-t5-xxl", help="Name of the model to use"
-    )
-    args = parser.parse_args()
-
     results = {}
     dataset_files = sorted(Path("data/llm4em").glob("*.csv"))
-    comparor = ComparingHF(model_name=args.model)
+    comparor = Comparing()
     for file in dataset_files:
         dataset = file.stem
         print(f"[bold magenta]{dataset}[/bold magenta]")
@@ -232,13 +215,14 @@ if __name__ == "__main__":
         preds_lst = thread_map(
             lambda it: comparor(it, mode="bubble"),
             instances,
-            max_workers=1,
+            max_workers=16,
         )
         preds = [pred for preds in preds_lst for pred in preds]
         labels = [label for it in instances for label in it["labels"]]
 
         print(classification_report(labels[: len(preds)], preds, digits=4))
         print(confusion_matrix(labels[: len(preds)], preds))
+        print(f"Cost: {comparor.cost:.2f}")
 
         results[dataset] = classification_report(
             labels[: len(preds)], preds, output_dict=True
@@ -246,11 +230,14 @@ if __name__ == "__main__":
         results[dataset].pop("support")
         for k, v in results[dataset].items():
             results[dataset][k] = v * 100
+        results[dataset]["cost"] = comparor.cost
+        comparor.cost = 0
 
     results["mean"] = {
         "precision": sum(v["precision"] for v in results.values()) / len(results),
         "recall": sum(v["recall"] for v in results.values()) / len(results),
         "f1-score": sum(v["f1-score"] for v in results.values()) / len(results),
+        "cost": sum(v["cost"] for v in results.values()) / len(results),
     }
     df = pd.DataFrame.from_dict(results, orient="index")
     print(df)

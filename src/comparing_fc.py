@@ -11,11 +11,11 @@ from sklearn.metrics import classification_report, confusion_matrix
 from sklearn.utils import gen_batches
 from tqdm.contrib.concurrent import thread_map
 
-from src.matching_hf import MatchingHF
-from src.utils import HuggingfaceWrapper
+from src.matching_fc import MatchingFC
+from src.utils import FastChatWrapper
 
 
-class ComparingHF:
+class ComparingFC:
     template = Template(
         """Which of the following two records is more likely to refer to the same real-world entity as the given record? Answer with the corresponding record identifier "Record A" or "Record B".
 
@@ -29,12 +29,12 @@ Record B: {{ cpair[1] }}
 
     def __init__(
         self,
-        model_name: str = "flan-t5-xxl",
+        model_name: str = "Mistral-7B-Instruct-v0.1",
         template: Template = template,
     ):
-        self.wrapper = HuggingfaceWrapper(model_name)
+        self.wrapper = FastChatWrapper(model_name)
         self.template = template
-        self.matcher = MatchingHF(model_name)
+        self.matcher = MatchingFC(model_name)
 
         cache = Cache(f"results/diskcache/comparing_{model_name}")
         self.wrapper.generate = cache.memoize(name="generate")(self.wrapper.generate)
@@ -202,13 +202,16 @@ Record B: {{ cpair[1] }}
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--model", type=str, default="flan-t5-xxl", help="Name of the model to use"
+        "--model",
+        type=str,
+        default="Mistral-7B-Instruct-v0.1",
+        help="Name of the model to use",
     )
     args = parser.parse_args()
 
     results = {}
     dataset_files = sorted(Path("data/llm4em").glob("*.csv"))
-    comparor = ComparingHF(model_name=args.model)
+    comparor = ComparingFC(model_name=args.model)
     for file in dataset_files:
         dataset = file.stem
         print(f"[bold magenta]{dataset}[/bold magenta]")

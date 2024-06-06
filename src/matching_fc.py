@@ -10,10 +10,10 @@ from sklearn.metrics import classification_report, confusion_matrix
 from sklearn.utils import gen_batches
 from tqdm.contrib.concurrent import thread_map
 
-from src.utils import HuggingfaceWrapper
+from src.utils import FastChatWrapper
 
 
-class MatchingHF:
+class MatchingFC:
     template = Template(
         """Do the two entity records refer to the same real-world entity? Answer "Yes" if they do and "No" if they do not.
 
@@ -24,10 +24,10 @@ Record 2: {{ record_right }}
 
     def __init__(
         self,
-        model_name: str = "flan-t5-xxl",
+        model_name: str = "Mistral-7B-Instruct-v0.1",
         template: Template = template,
     ):
-        self.wrapper = HuggingfaceWrapper(model_name)
+        self.wrapper = FastChatWrapper(model_name)
         self.template = template
 
         cache = Cache(f"results/diskcache/matching_{model_name}")
@@ -107,13 +107,16 @@ Record 2: {{ record_right }}
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--model", type=str, default="flan-t5-xxl", help="Name of the model to use"
+        "--model",
+        type=str,
+        default="Mistral-7B-Instruct-v0.1",
+        help="Name of the model to use",
     )
     args = parser.parse_args()
 
     results = {}
     dataset_files = sorted(Path("data/llm4em").glob("*.csv"))
-    matcher = MatchingHF(model_name=args.model)
+    matcher = MatchingFC(model_name=args.model)
     for file in dataset_files:
         dataset = file.stem
         print(f"[bold magenta]{dataset}[/bold magenta]")

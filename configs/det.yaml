@@ -19,8 +19,8 @@ bind_mounts:
     container_path: /shared_home
 
 resources:
-  slots: 2
-  resource_pool: A100-40G
+  slots: 1
+  resource_pool: A100-80G
   shm_size: 32G
 
 work_dir: /home/tianshu2020

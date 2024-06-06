@@ -1,71 +1,68 @@
-import argparse
-import re
+from collections import deque
 from pathlib import Path
+from typing import Literal
 
 import pandas as pd
-from diskcache import Cache
-from jinja2 import Template
 from rich import print
 from sklearn.metrics import classification_report, confusion_matrix
 from tqdm.contrib.concurrent import thread_map
 
-from src.utils import HuggingfaceWrapper
+from src.comparing import Comparing
+from src.matching import Matching
+from src.selecting import Selecting
 
 
-class SelectingHF:
-    template = Template(
-        """Select a record from the following candidates that refers to the same real-world entity as the given record. Answer with the corresponding record number surrounded by "[]" or "[0]" if there is none.
-
-Given entity record:
-{{ anchor }}
-
-Candidate records:{% for candidate in candidates %}
-[{{ loop.index }}] {{ candidate }}{% endfor %}
-"""
-    )
+class Hybrid:
+    ranking_strategy: Literal["matching", "comparing"] = "matching"
 
     def __init__(
         self,
-        model_name: str = "flan-t5-xxl",
-        template: Template = template,
+        model_name: str = "gpt-3.5-turbo-0613",
+        ranking_strategy: Literal["matching", "comparing"] = ranking_strategy,
     ):
-        self.wrapper = HuggingfaceWrapper(model_name)
-        self.template = template
+        self.model = model_name
+        self.ranking_strategy = ranking_strategy
+        if self.ranking_strategy == "matching":
+            self.ranker = Matching(model_name=model_name)
+        elif self.ranking_strategy == "comparing":
+            self.ranker = Comparing(model_name=model_name)
 
-        cache = Cache(f"results/diskcache/selecting_{model_name}")
-        self.wrapper.generate = cache.memoize(name="generate")(self.wrapper.generate)
+        self.selector = Selecting(model_name=model_name)
 
-    def __call__(self, instance) -> list[bool]:
-        source = self.template.render(
-            anchor=instance["anchor"],
-            candidates=instance["candidates"],
-        )
-        target = self.wrapper.generate(
-            source,
-            max_new_tokens=3,
-            return_dict_in_generate=True,
-        )
+    def __call__(self, instance, topK: int = 1) -> list[bool]:
+        if self.ranking_strategy == "matching":
+            indexes = self.ranker.pointwise_rank(instance)
+        elif self.ranking_strategy == "comparing":
+            indexes = self.ranker.pairwise_rank(instance, topK=topK)
 
-        idx = re.search(r"\[(\d+)\]", target.strip())
+        indexes_k = indexes[:topK]
         preds = [False] * len(instance["candidates"])
-        if idx:
-            idx = int(idx.group(1))
-            if 1 <= idx <= len(instance["candidates"]):
-                preds[idx - 1] = True
+        dq = deque(indexes[:topK])
+        dq.rotate(2)
+        indexes_k = list(dq)
+        instance_k = {
+            "anchor": instance["anchor"],
+            "candidates": [instance["candidates"][idx] for idx in indexes_k],
+        }
+        preds_k = self.selector(instance_k)
+        for i, pred in enumerate(preds_k):
+            preds[indexes_k[i]] = pred
 
         return preds
 
+    @property
+    def cost(self):
+        return self.ranker.cost + self.selector.cost
+
+    @cost.setter
+    def cost(self, value: int):
+        self.ranker.cost = self.selector.cost = value
+
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--model", type=str, default="flan-t5-xxl", help="Name of the model to use"
-    )
-    args = parser.parse_args()
-
     results = {}
     dataset_files = sorted(Path("data/llm4em").glob("*.csv"))
-    selector = SelectingHF(model_name=args.model)
+    hybrid = Hybrid()
     for file in dataset_files:
         dataset = file.stem
         print(f"[bold magenta]{dataset}[/bold magenta]")
@@ -87,9 +84,9 @@ if __name__ == "__main__":
         ]
 
         preds_lst = thread_map(
-            selector,
+            lambda it: hybrid(it, topK=4),
             instances,
-            max_workers=1,
+            max_workers=16,
         )
         preds = [pred for preds in preds_lst for pred in preds]
         labels = [label for it in instances for label in it["labels"]]
@@ -103,11 +100,14 @@ if __name__ == "__main__":
         results[dataset].pop("support")
         for k, v in results[dataset].items():
             results[dataset][k] = v * 100
+        results[dataset]["cost"] = hybrid.cost
+        hybrid.cost = 0
 
     results["mean"] = {
         "precision": sum(v["precision"] for v in results.values()) / len(results),
         "recall": sum(v["recall"] for v in results.values()) / len(results),
         "f1-score": sum(v["f1-score"] for v in results.values()) / len(results),
+        "cost": sum(v["cost"] for v in results.values()) / len(results),
     }
     df = pd.DataFrame.from_dict(results, orient="index")
     print(df)

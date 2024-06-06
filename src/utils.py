@@ -1,37 +1,206 @@
-from functools import wraps
+from functools import partial, wraps
+from pathlib import Path
+
+from openai import OpenAI
+from tenacity import retry, stop_after_attempt, wait_exponential
+
+CLIENT = OpenAI()
+
+
+@retry(stop=stop_after_attempt(10), wait=wait_exponential(multiplier=1, max=10))
+def openai_chat_complete(
+    messages,
+    model,
+    client=CLIENT,
+    **kwargs,
+):
+    response = client.chat.completions.create(messages=messages, model=model, **kwargs)
+    if response.choices is None:
+        raise ValueError(f"Error response: {response}")
+    return response
+
+
+class HuggingfaceWrapper:
+    def __init__(
+        self,
+        model_name: str = "flan-t5-xxl",
+        model_dir: Path = Path("models/hf_models"),
+    ):
+        self.model_name = model_name
+        self.model_dir = model_dir
+        self._model = self._tokenizer = None
+
+    def init_model_and_tokenizer(self):
+        global torch
+        import torch
+        from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
+
+        self._model = AutoModelForSeq2SeqLM.from_pretrained(
+            self.model_dir / self.model_name,
+            device_map="auto",
+            torch_dtype=torch.float16,
+        )
+        self._tokenizer = AutoTokenizer.from_pretrained(
+            self.model_dir / self.model_name
+        )
+        torch.nn.CrossEntropyLoss = partial(torch.nn.CrossEntropyLoss, reduction="none")
+
+    @property
+    def model(self):
+        if self._model is not None:
+            return self._model
+
+        self.init_model_and_tokenizer()
+        return self._model
+
+    @property
+    def tokenizer(self):
+        if self._tokenizer is not None:
+            return self._tokenizer
+
+        self.init_model_and_tokenizer()
+        return self._tokenizer
+
+    def generate(self, source: str, **kwargs) -> str:
+        input_ids = self.tokenizer(source, return_tensors="pt").input_ids.to("cuda")
+        with torch.inference_mode():
+            outputs = self.model.generate(input_ids, **kwargs)
+        target = self.tokenizer.decode(outputs.sequences[0], skip_special_tokens=True)
+        return target
+
+    def cal_log_probs(self, sources: list[str], targets: list[str]) -> list[float]:
+        inputs = self.tokenizer(
+            text=sources,
+            text_target=targets,
+            padding=True,
+            truncation=True,
+            return_tensors="pt",
+        ).to("cuda")
+        inputs["labels"][inputs["labels"] == self.tokenizer.pad_token_id] = -100
+        with torch.inference_mode():
+            outputs = self.model(**inputs, return_dict=True)
+            log_probs = (-outputs.loss).view(inputs.labels.size(0), -1).mean(dim=1)
+        return log_probs.tolist()
+
+
+class FastChatWrapper:
+    def __init__(
+        self,
+        model_name: str = "Mistral-7B-Instruct-v0.1",
+        model_dir: Path = Path("models/hf_models"),
+    ):
+        self.model_name = model_name
+        self.model_dir = model_dir
+        self._model = self._tokenizer = None
+
+        global get_conversation_template
+        from fastchat.model import get_conversation_template
+
+    def init_model_and_tokenizer(self):
+        global torch
+        import torch
+        from fastchat.model import load_model
+
+        self._model, self._tokenizer = load_model(
+            self.model_dir / self.model_name,
+            device="cuda",
+            dtype=torch.float16,
+            num_gpus=1,
+        )
+        if self._tokenizer.pad_token is None:
+            self._tokenizer.pad_token = self._tokenizer.eos_token
+        torch.nn.CrossEntropyLoss = partial(torch.nn.CrossEntropyLoss, reduction="none")
+
+    @property
+    def model(self):
+        if self._model is not None:
+            return self._model
+
+        self.init_model_and_tokenizer()
+        return self._model
+
+    @property
+    def tokenizer(self):
+        if self._model is not None:
+            return self._tokenizer
+
+        self.init_model_and_tokenizer()
+        return self._tokenizer
+
+    def generate(self, source: str, **kwargs) -> str:
+        conv = get_conversation_template(self.model_name)
+        conv.append_message(conv.roles[0], source)
+        conv.append_message(conv.roles[1], None)
+        prompt = conv.get_prompt()
+        inputs = self.tokenizer(prompt, return_tensors="pt").to("cuda")
+        with torch.inference_mode():
+            outputs = self.model.generate(
+                **inputs, **kwargs, pad_token_id=self.tokenizer.pad_token_id
+            )
+        target = self.tokenizer.decode(outputs.sequences[0], skip_special_tokens=True)
+        return target[len(prompt) :]
+
+    def cal_log_probs(self, sources: list[str], targets: list[str]) -> list[float]:
+        psources = []
+        ptargets = []
+        for src, tgt in zip(sources, targets, strict=True):
+            conv = get_conversation_template(self.model_name)
+            conv.append_message(conv.roles[0], src)
+            conv.append_message(conv.roles[1], None)
+            psources.append(conv.get_prompt())
+            conv = get_conversation_template(self.model_name)
+            conv.append_message(conv.roles[0], src)
+            conv.append_message(conv.roles[1], tgt)
+            ptargets.append(conv.get_prompt())
+
+        inputs = self.tokenizer(
+            text=psources,
+            text_target=ptargets,
+            padding=True,
+            truncation=True,
+            return_tensors="pt",
+        ).to("cuda")
+        inputs.pop("token_type_ids", None)
+
+        source_lengths = torch.tensor(
+            [len(src) for src in inputs["input_ids"]]
+        ).unsqueeze(-1)
+        range_tensor = torch.arange(inputs["labels"].size(1)).expand_as(
+            inputs["labels"]
+        )
+        mask = range_tensor < source_lengths
+        inputs["input_ids"] = inputs["labels"].clone()
+        inputs["labels"][mask] = -100
+
+        with torch.inference_mode():
+            outputs = self.model(**inputs, return_dict=True)
+            log_probs = (-outputs.loss).view(inputs.labels.size(0), -1).mean(dim=1)
+
+        return log_probs.tolist()
 
 
 class APICostCalculator:
     # fmt: off
-    _model_cost_per_1k_tokens = {
+    _model_cost_per_1m_tokens = {
+        # https://openai.com/api/pricing/
+        "gpt-3.5-turbo": {"prompt": 0.5, "completion": 1.5},
+        "gpt-3.5-turbo-0125": {"prompt": 0.5, "completion": 1.5},
+        "gpt-3.5-turbo-instruct": {"prompt": 1.5, "completion": 2.0},
+        "gpt-4o": {"prompt": 5, "completion": 15},
+        "gpt-4o-2024-05-13": {"prompt": 5, "completion": 15},
+        "gpt-4-turbo": {"prompt": 10, "completion": 30},
+        "gpt-4-turbo-2024-04-09": {"prompt": 10, "completion": 30},
+        "gpt-4": {"prompt": 30, "completion": 60},
         # https://platform.openai.com/docs/deprecations/
-        "gpt-3.5-turbo": {"prompt": 0.0015, "completion": 0.0020},
-        "gpt-3.5-turbo-0301": {"prompt": 0.0015, "completion": 0.0020},
-        "gpt-3.5-turbo-0613": {"prompt": 0.0015, "completion": 0.0020},
-        "gpt-3.5-turbo-1106": {"prompt": 0.0010, "completion": 0.0020},
-        "gpt-4": {"prompt": 0.03, "completion": 0.06},
-        # https://openrouter.ai/docs#models
-        "mistralai/mistral-tiny": {"prompt": 0.0001555, "completion": 0.0004666},
-        "mistralai/mistral-small": {"prompt": 0.0006666, "completion": 0.002},
-        "mistralai/mistral-medium": {"prompt": 0.002778, "completion": 0.008333},
-        # https://docs.endpoints.anyscale.com/pricing
-        "meta-llama/Llama-2-7b-chat-hf": {"prompt": 0.00015, "completion": 0.00015},
-        "meta-llama/Llama-2-13b-chat-hf": {"prompt": 0.00025, "completion": 0.00025},
-        "meta-llama/Llama-2-70b-chat-hf": {"prompt": 0.001, "completion": 0.001},
-        "mistralai/Mistral-7B-Instruct-v0.1": {"prompt": 0.00015, "completion": 0.00015},
-        "mistralai/Mixtral-8x7B-Instruct-v0.1": {"prompt": 0.0005, "completion": 0.0005},
-        # https://replicate.com/pricing
-        "meta/llama-2-7b": {"prompt": 0.00005, "completion": 0.00025},
-        "meta/llama-2-13b": {"prompt": 0.00010, "completion": 0.00050},
-        "meta/llama-2-70b": {"prompt": 0.00065, "completion": 0.00275},
-        "mistralai/mistral-7b-v0.1": {"prompt": 0.00005, "completion": 0.00025},
-        "mistralai/mistral-7b-instruct-v0.2": {"prompt": 0.00005, "completion": 0.00025},
-        "mistralai/mixtral-8x7b-instruct-v0.1": {"prompt": 0.00030, "completion": 0.00100},
+        "gpt-3.5-turbo-0301": {"prompt": 1.5, "completion": 2.0},
+        "gpt-3.5-turbo-0613": {"prompt": 1.5, "completion": 2.0},
+        "gpt-3.5-turbo-16k-0613": {"prompt": 3, "completion": 4.0},
+        "gpt-3.5-turbo-1106": {"prompt": 1.0, "completion": 2.0},
     }
     # fmt: on
 
     def __init__(self, model_name: str = "gpt-3.5-turbo"):
-        if model_name not in self._model_cost_per_1k_tokens:
+        if model_name not in self._model_cost_per_1m_tokens:
             raise ValueError(f"Unknown model name: {model_name}")
         self._model_name = model_name
         self._cost = 0
@@ -41,11 +210,11 @@ class APICostCalculator:
         def wrapper(*args, **kwargs):
             response = func(*args, **kwargs)
             cost = (
-                self._model_cost_per_1k_tokens[self._model_name]["prompt"]
+                self._model_cost_per_1m_tokens[self._model_name]["prompt"]
                 * response.usage.prompt_tokens
-                + self._model_cost_per_1k_tokens[self._model_name]["completion"]
+                + self._model_cost_per_1m_tokens[self._model_name]["completion"]
                 * response.usage.completion_tokens
-            ) / 1000.0
+            ) / 1000000.0
             self._cost += cost
             return response
 

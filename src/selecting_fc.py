@@ -1,51 +1,74 @@
-from collections import deque
+import argparse
+import re
 from pathlib import Path
-from typing import Literal
 
 import pandas as pd
+from diskcache import Cache
+from jinja2 import Template
 from rich import print
 from sklearn.metrics import classification_report, confusion_matrix
 from tqdm.contrib.concurrent import thread_map
 
-# isort: split
-import comparing_v2
-import matching_v2
-import selecting_v2
-
-RANKING_STRATEGY = "matching"
-LLM = "gpt-3.5-turbo-0613"
+from src.utils import FastChatWrapper
 
 
-def hybrid(
-    instance,
-    model: str = LLM,
-    ranking_strategy: Literal["matching", "comparing"] = "matching",
-    topK: int = 1,
-) -> list[bool]:
-    if ranking_strategy == "matching":
-        indexes = matching_v2.pointwise_rank(instance, model=model)
-    elif ranking_strategy == "comparing":
-        indexes = comparing_v2.pairwise_rank(instance, model=model, topK=topK)
+class SelectingFC:
+    template = Template(
+        """Select a record from the following candidates that refers to the same real-world entity as the given record. Answer with the corresponding record number surrounded by "[]" or "[0]" if there is none.
 
-    indexes_k = indexes[:topK]
-    preds = [False] * len(instance["candidates"])
-    dq = deque(indexes[:topK])
-    dq.rotate(2)
-    indexes_k = list(dq)
-    instance_k = {
-        "anchor": instance["anchor"],
-        "candidates": [instance["candidates"][idx] for idx in indexes_k],
-    }
-    preds_k = selecting_v2.select(instance_k, model=model)
-    for i, pred in enumerate(preds_k):
-        preds[indexes_k[i]] = pred
+Given entity record:
+{{ anchor }}
 
-    return preds
+Candidate records:{% for candidate in candidates %}
+[{{ loop.index }}] {{ candidate }}{% endfor %}
+"""
+    )
+
+    def __init__(
+        self,
+        model_name: str = "Mistral-7B-Instruct-v0.1",
+        template: Template = template,
+    ):
+        self.wrapper = FastChatWrapper(model_name)
+        self.template = template
+
+        cache = Cache(f"results/diskcache/selecting_{model_name}")
+        self.wrapper.generate = cache.memoize(name="generate")(self.wrapper.generate)
+
+    def __call__(self, instance) -> list[bool]:
+        source = self.template.render(
+            anchor=instance["anchor"],
+            candidates=instance["candidates"],
+        )
+        target = self.wrapper.generate(
+            source,
+            max_new_tokens=128,
+            return_dict_in_generate=True,
+        )
+
+        idx = re.search(r"\[(\d+)\]", target.strip())
+        preds = [False] * len(instance["candidates"])
+        if idx:
+            idx = int(idx.group(1))
+            if 1 <= idx <= len(instance["candidates"]):
+                preds[idx - 1] = True
+
+        return preds
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--model",
+        type=str,
+        default="Mistral-7B-Instruct-v0.1",
+        help="Name of the model to use",
+    )
+    args = parser.parse_args()
+
     results = {}
     dataset_files = sorted(Path("data/llm4em").glob("*.csv"))
+    selector = SelectingFC(model_name=args.model)
     for file in dataset_files:
         dataset = file.stem
         print(f"[bold magenta]{dataset}[/bold magenta]")
@@ -67,9 +90,9 @@ if __name__ == "__main__":
         ]
 
         preds_lst = thread_map(
-            lambda it: hybrid(it, ranking_strategy=RANKING_STRATEGY, topK=4),
+            selector,
             instances,
-            max_workers=16,
+            max_workers=1,
         )
         preds = [pred for preds in preds_lst for pred in preds]
         labels = [label for it in instances for label in it["labels"]]
@@ -83,24 +106,12 @@ if __name__ == "__main__":
         results[dataset].pop("support")
         for k, v in results[dataset].items():
             results[dataset][k] = v * 100
-        results[dataset]["cost"] = (
-            matching_v2.api_cost_calculator.cost
-            + comparing_v2.api_cost_calculator.cost
-            + selecting_v2.api_cost_calculator.cost
-        )
-        matching_v2.api_cost_calculator.cost = 0
-        comparing_v2.api_cost_calculator.cost = 0
-        selecting_v2.api_cost_calculator.cost = 0
 
     results["mean"] = {
         "precision": sum(v["precision"] for v in results.values()) / len(results),
         "recall": sum(v["recall"] for v in results.values()) / len(results),
         "f1-score": sum(v["f1-score"] for v in results.values()) / len(results),
-        "cost": sum(v["cost"] for v in results.values()) / len(results),
     }
     df = pd.DataFrame.from_dict(results, orient="index")
     print(df)
     print(df.to_csv(float_format="%.2f", index=False))
-    print(f"Matching Cost: {matching_v2.api_cost_calculator.cost:.2f}")
-    print(f"Comparing Cost: {comparing_v2.api_cost_calculator.cost:.2f}")
-    print(f"Selecting Cost: {selecting_v2.api_cost_calculator.cost:.2f}")

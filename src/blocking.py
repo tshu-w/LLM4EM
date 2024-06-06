@@ -1,3 +1,4 @@
+# ruff: noqa: B023
 from pathlib import Path
 
 import nltk
@@ -67,7 +68,7 @@ def blocking(
 if __name__ == "__main__":
     for dataset, (path, files, sep) in Datasets.items():
         print(dataset)
-        dfs = [pd.read_csv(path / f, index_col="id", sep=sep) for f in files]
+        dfs = [pd.read_csv(path / f, index_col="id", sep=sep, dtype=str) for f in files]
         for df in dfs:
             df.fillna("", inplace=True)
             df.drop(columns=["description"], inplace=True, errors="ignore")
@@ -114,7 +115,7 @@ if __name__ == "__main__":
             axis=1,
         )
 
-        # Sample 200 records, 100 with matches, 100 without matches
+        # Sample 400 records, 300 with matches, 100 without matches
         topK = 10
         candidates_K = (
             candidates.groupby("id_left")
@@ -122,7 +123,7 @@ if __name__ == "__main__":
             .groupby("id_left")
             .head(topK)
         )
-        wm = candidates_K[candidates_K["label"]].sample(n=100, random_state=42)[
+        wm = candidates_K[candidates_K["label"]].sample(n=300, random_state=42)[
             "id_left"
         ]
         wom = (
@@ -158,4 +159,29 @@ if __name__ == "__main__":
         )
         candidates_remains.to_csv(
             Path("data/llm4em/remains") / f"{dataset}.csv", index=False
+        )
+
+        # Prepare training data for Sudowoodo
+        Path(f"data/llm4em/sudowoodo/{dataset}").mkdir(parents=True, exist_ok=True)
+        candidates_remains["label"] = candidates_remains["label"].astype(int)
+        candidates_remains[["record_left", "record_right", "label"]][:5000].to_csv(
+            Path(f"data/llm4em/sudowoodo/{dataset}") / "train.txt",
+            index=False,
+            sep="\t",
+            header=False,
+        )
+        candidates_sample["label"] = candidates_sample["label"].astype(int)
+        candidates_sample[["record_left", "record_right", "label"]].to_csv(
+            Path(f"data/llm4em/sudowoodo/{dataset}") / "test.txt",
+            index=False,
+            sep="\t",
+            header=False,
+        )
+
+        allpair = pd.concat([candidates_remains[:5000], candidates_sample])
+        allpair[["record_left", "record_right"]][: topK * len(dfs[0])].to_csv(
+            Path(f"data/llm4em/sudowoodo/{dataset}") / "train_no_label.txt",
+            index=False,
+            sep="\t",
+            header=False,
         )
