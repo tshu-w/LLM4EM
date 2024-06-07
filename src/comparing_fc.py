@@ -50,7 +50,7 @@ Record B: {{ cpair[1] }}
             )
             target1 = self.wrapper.generate(
                 source1,
-                max_new_tokens=128,
+                max_new_tokens=32,
                 return_dict_in_generate=True,
             )
             source2 = self.template.render(
@@ -59,7 +59,7 @@ Record B: {{ cpair[1] }}
             )
             target2 = self.wrapper.generate(
                 source2,
-                max_new_tokens=128,
+                max_new_tokens=32,
                 return_dict_in_generate=True,
             )
             score = 0

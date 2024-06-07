@@ -47,7 +47,7 @@ Record 2: {{ record_right }}
                 target = (
                     self.wrapper.generate(
                         source,
-                        max_new_tokens=128,
+                        max_new_tokens=32,
                         return_dict_in_generate=True,
                     )
                     .strip()

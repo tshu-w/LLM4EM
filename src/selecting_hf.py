@@ -42,7 +42,7 @@ Candidate records:{% for candidate in candidates %}
         )
         target = self.wrapper.generate(
             source,
-            max_new_tokens=3,
+            max_new_tokens=32,
             return_dict_in_generate=True,
         )
 
