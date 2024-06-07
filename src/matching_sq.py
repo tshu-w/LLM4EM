@@ -10,10 +10,10 @@ from sklearn.metrics import classification_report, confusion_matrix
 from sklearn.utils import gen_batches
 from tqdm.contrib.concurrent import thread_map
 
-from src.utils import HuggingfaceWrapper
+from src.utils import Seq2SeqWrapper
 
 
-class MatchingHF:
+class MatchingSQ:
     template = Template(
         """Do the two entity records refer to the same real-world entity? Answer "Yes" if they do and "No" if they do not.
 
@@ -27,7 +27,7 @@ Record 2: {{ record_right }}
         model_name: str = "flan-t5-xxl",
         template: Template = template,
     ):
-        self.wrapper = HuggingfaceWrapper(model_name)
+        self.wrapper = Seq2SeqWrapper(model_name)
         self.template = template
 
         cache = Cache(f"results/diskcache/matching_{model_name}")
@@ -45,13 +45,7 @@ Record 2: {{ record_right }}
                     record_right=candidate,
                 )
                 target = (
-                    self.wrapper.generate(
-                        source,
-                        max_new_tokens=32,
-                        return_dict_in_generate=True,
-                    )
-                    .strip()
-                    .lower()
+                    self.wrapper.generate(source, max_new_tokens=32).strip().lower()
                 )
                 if "yes" in target:
                     scores.append(1)
@@ -113,7 +107,7 @@ if __name__ == "__main__":
 
     results = {}
     dataset_files = sorted(Path("data/llm4em").glob("*.csv"))
-    matcher = MatchingHF(model_name=args.model)
+    matcher = MatchingSQ(model_name=args.model)
     for file in dataset_files:
         dataset = file.stem
         print(f"[bold magenta]{dataset}[/bold magenta]")

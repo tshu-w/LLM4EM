@@ -7,8 +7,8 @@ from rich import print
 from sklearn.metrics import classification_report, confusion_matrix
 from tqdm.contrib.concurrent import thread_map
 
-from src.comparing_hf import ComparingHF
-from src.matching_hf import MatchingHF
+from src.comparing_sq import ComparingSQ
+from src.matching_sq import MatchingSQ
 from src.selecting import Selecting
 
 RANKING_STRATEGY = "matching"
@@ -27,9 +27,9 @@ class ComEM:
         self.ranking_model_name = ranking_model_name
         self.selecting_model_name = selecting_model_name
         if self.ranking_strategy == "matching":
-            self.ranker = MatchingHF(model_name=ranking_model_name)
+            self.ranker = MatchingSQ(model_name=ranking_model_name)
         elif self.ranking_strategy == "comparing":
-            self.ranker = ComparingHF(model_name=ranking_model_name)
+            self.ranker = ComparingSQ(model_name=ranking_model_name)
         self.selector = Selecting(model_name=selecting_model_name)
 
     def __call__(self, instance, topK: int = 1) -> list[bool]:

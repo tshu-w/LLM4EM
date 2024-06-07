@@ -9,10 +9,10 @@ from rich import print
 from sklearn.metrics import classification_report, confusion_matrix
 from tqdm.contrib.concurrent import thread_map
 
-from src.utils import FastChatWrapper
+from src.utils import ChatWrapper
 
 
-class SelectingFC:
+class SelectingCT:
     template = Template(
         """Select a record from the following candidates that refers to the same real-world entity as the given record. Answer with the corresponding record number surrounded by "[]" or "[0]" if there is none.
 
@@ -29,7 +29,7 @@ Candidate records:{% for candidate in candidates %}
         model_name: str = "Mistral-7B-Instruct-v0.1",
         template: Template = template,
     ):
-        self.wrapper = FastChatWrapper(model_name)
+        self.wrapper = ChatWrapper(model_name)
         self.template = template
 
         cache = Cache(f"results/diskcache/selecting_{model_name}")
@@ -40,11 +40,7 @@ Candidate records:{% for candidate in candidates %}
             anchor=instance["anchor"],
             candidates=instance["candidates"],
         )
-        target = self.wrapper.generate(
-            source,
-            max_new_tokens=32,
-            return_dict_in_generate=True,
-        )
+        target = self.wrapper.generate(source, max_new_tokens=32)
 
         idx = re.search(r"\[(\d+)\]", target.strip())
         preds = [False] * len(instance["candidates"])
@@ -68,7 +64,7 @@ if __name__ == "__main__":
 
     results = {}
     dataset_files = sorted(Path("data/llm4em").glob("*.csv"))
-    selector = SelectingFC(model_name=args.model)
+    selector = SelectingCT(model_name=args.model)
     for file in dataset_files:
         dataset = file.stem
         print(f"[bold magenta]{dataset}[/bold magenta]")

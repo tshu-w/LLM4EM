@@ -2,8 +2,6 @@ openai
 transformers
 scikit-learn
 
-fschat[model_worker]
-
 diskcache
 retriv
 tenacity

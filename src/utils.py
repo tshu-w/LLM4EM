@@ -20,7 +20,7 @@ def openai_chat_complete(
     return response
 
 
-class HuggingfaceWrapper:
+class Seq2SeqWrapper:
     def __init__(
         self,
         model_name: str = "flan-t5-xxl",
@@ -29,8 +29,9 @@ class HuggingfaceWrapper:
         self.model_name = model_name
         self.model_dir = model_dir
         self._model = self._tokenizer = None
+        self.initialize()
 
-    def init_model_and_tokenizer(self):
+    def initialize(self):
         global torch
         import torch
         from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
@@ -45,26 +46,12 @@ class HuggingfaceWrapper:
         )
         torch.nn.CrossEntropyLoss = partial(torch.nn.CrossEntropyLoss, reduction="none")
 
-    @property
-    def model(self):
-        if self._model is not None:
-            return self._model
-
-        self.init_model_and_tokenizer()
-        return self._model
-
-    @property
-    def tokenizer(self):
-        if self._tokenizer is not None:
-            return self._tokenizer
-
-        self.init_model_and_tokenizer()
-        return self._tokenizer
-
     def generate(self, source: str, **kwargs) -> str:
         input_ids = self.tokenizer(source, return_tensors="pt").input_ids.to("cuda")
         with torch.inference_mode():
-            outputs = self.model.generate(input_ids, **kwargs)
+            outputs = self.model.generate(
+                input_ids, return_dict_in_generate=True, **kwargs
+            )
         target = self.tokenizer.decode(outputs.sequences[0], skip_special_tokens=True)
         return target
 
@@ -82,8 +69,24 @@ class HuggingfaceWrapper:
             log_probs = (-outputs.loss).view(inputs.labels.size(0), -1).mean(dim=1)
         return log_probs.tolist()
 
+    @property
+    def model(self):
+        if self._model is not None:
+            return self._model
 
-class FastChatWrapper:
+        self.initialize()
+        return self._model
+
+    @property
+    def tokenizer(self):
+        if self._tokenizer is not None:
+            return self._tokenizer
+
+        self.initialize()
+        return self._tokenizer
+
+
+class ChatWrapper:
     def __init__(
         self,
         model_name: str = "Mistral-7B-Instruct-v0.1",
@@ -91,92 +94,59 @@ class FastChatWrapper:
     ):
         self.model_name = model_name
         self.model_dir = model_dir
-        self._model = self._tokenizer = None
+        self._model = self._tokenizer = self._pipeline = None
+        self.initialize()
 
-        global get_conversation_template
-        from fastchat.model import get_conversation_template
-
-    def init_model_and_tokenizer(self):
-        global torch
+    def initialize(self):
         import torch
-        from fastchat.model import load_model
+        from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
 
-        self._model, self._tokenizer = load_model(
+        self._model = AutoModelForCausalLM.from_pretrained(
             self.model_dir / self.model_name,
-            device="cuda",
-            dtype=torch.float16,
-            num_gpus=1,
+            device_map="auto",
+            torch_dtype=torch.float16,
+            attn_implementation="flash_attention_2",
+        )
+        self._tokenizer = AutoTokenizer.from_pretrained(
+            self.model_dir / self.model_name
         )
         if self._tokenizer.pad_token is None:
             self._tokenizer.pad_token = self._tokenizer.eos_token
-        torch.nn.CrossEntropyLoss = partial(torch.nn.CrossEntropyLoss, reduction="none")
+        self._pipeline = pipeline(
+            task="text-generation", model=self._model, tokenizer=self._tokenizer
+        )
+
+    def generate(self, source: str, **kwargs) -> str:
+        messages = [{"role": "user", "content": source}]
+        target = self.pipeline(messages, **kwargs)[0]["generated_text"][-1]["content"]
+        return target
+
+    def cal_log_probs(self, sources: list[str], targets: list[str]) -> list[float]:
+        raise NotImplementedError
 
     @property
     def model(self):
         if self._model is not None:
             return self._model
 
-        self.init_model_and_tokenizer()
+        self.initialize()
         return self._model
 
     @property
     def tokenizer(self):
-        if self._model is not None:
+        if self._tokenizer is not None:
             return self._tokenizer
 
-        self.init_model_and_tokenizer()
+        self.initialize()
         return self._tokenizer
 
-    def generate(self, source: str, **kwargs) -> str:
-        conv = get_conversation_template(self.model_name)
-        conv.append_message(conv.roles[0], source)
-        conv.append_message(conv.roles[1], None)
-        prompt = conv.get_prompt()
-        inputs = self.tokenizer(prompt, return_tensors="pt").to("cuda")
-        with torch.inference_mode():
-            outputs = self.model.generate(
-                **inputs, **kwargs, pad_token_id=self.tokenizer.pad_token_id
-            )
-        target = self.tokenizer.decode(outputs.sequences[0], skip_special_tokens=True)
-        return target[len(prompt) :]
+    @property
+    def pipeline(self):
+        if self._pipeline is not None:
+            return self._pipeline
 
-    def cal_log_probs(self, sources: list[str], targets: list[str]) -> list[float]:
-        psources = []
-        ptargets = []
-        for src, tgt in zip(sources, targets, strict=True):
-            conv = get_conversation_template(self.model_name)
-            conv.append_message(conv.roles[0], src)
-            conv.append_message(conv.roles[1], None)
-            psources.append(conv.get_prompt())
-            conv = get_conversation_template(self.model_name)
-            conv.append_message(conv.roles[0], src)
-            conv.append_message(conv.roles[1], tgt)
-            ptargets.append(conv.get_prompt())
-
-        inputs = self.tokenizer(
-            text=psources,
-            text_target=ptargets,
-            padding=True,
-            truncation=True,
-            return_tensors="pt",
-        ).to("cuda")
-        inputs.pop("token_type_ids", None)
-
-        source_lengths = torch.tensor(
-            [len(src) for src in inputs["input_ids"]]
-        ).unsqueeze(-1)
-        range_tensor = torch.arange(inputs["labels"].size(1)).expand_as(
-            inputs["labels"]
-        )
-        mask = range_tensor < source_lengths
-        inputs["input_ids"] = inputs["labels"].clone()
-        inputs["labels"][mask] = -100
-
-        with torch.inference_mode():
-            outputs = self.model(**inputs, return_dict=True)
-            log_probs = (-outputs.loss).view(inputs.labels.size(0), -1).mean(dim=1)
-
-        return log_probs.tolist()
+        self.initialize()
+        return self._pipeline
 
 
 class APICostCalculator:

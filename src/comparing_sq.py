@@ -11,11 +11,11 @@ from sklearn.metrics import classification_report, confusion_matrix
 from sklearn.utils import gen_batches
 from tqdm.contrib.concurrent import thread_map
 
-from src.matching_fc import MatchingFC
-from src.utils import FastChatWrapper
+from src.matching_sq import MatchingSQ
+from src.utils import Seq2SeqWrapper
 
 
-class ComparingFC:
+class ComparingSQ:
     template = Template(
         """Which of the following two records is more likely to refer to the same real-world entity as the given record? Answer with the corresponding record identifier "Record A" or "Record B".
 
@@ -29,12 +29,12 @@ Record B: {{ cpair[1] }}
 
     def __init__(
         self,
-        model_name: str = "Mistral-7B-Instruct-v0.1",
+        model_name: str = "flan-t5-xxl",
         template: Template = template,
     ):
-        self.wrapper = FastChatWrapper(model_name)
+        self.wrapper = Seq2SeqWrapper(model_name)
         self.template = template
-        self.matcher = MatchingFC(model_name)
+        self.matcher = MatchingSQ(model_name)
 
         cache = Cache(f"results/diskcache/comparing_{model_name}")
         self.wrapper.generate = cache.memoize(name="generate")(self.wrapper.generate)
@@ -48,20 +48,12 @@ Record B: {{ cpair[1] }}
                 anchor=instance["anchor"],
                 cpair=instance["cpair"],
             )
-            target1 = self.wrapper.generate(
-                source1,
-                max_new_tokens=32,
-                return_dict_in_generate=True,
-            )
+            target1 = self.wrapper.generate(source1, max_new_tokens=32)
             source2 = self.template.render(
                 anchor=instance["anchor"],
                 cpair=instance["cpair"][::-1],
             )
-            target2 = self.wrapper.generate(
-                source2,
-                max_new_tokens=32,
-                return_dict_in_generate=True,
-            )
+            target2 = self.wrapper.generate(source2, max_new_tokens=32)
             score = 0
             if "Record A" in target1:
                 score += 1
@@ -202,16 +194,13 @@ Record B: {{ cpair[1] }}
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--model",
-        type=str,
-        default="Mistral-7B-Instruct-v0.1",
-        help="Name of the model to use",
+        "--model", type=str, default="flan-t5-xxl", help="Name of the model to use"
     )
     args = parser.parse_args()
 
     results = {}
     dataset_files = sorted(Path("data/llm4em").glob("*.csv"))
-    comparor = ComparingFC(model_name=args.model)
+    comparor = ComparingSQ(model_name=args.model)
     for file in dataset_files:
         dataset = file.stem
         print(f"[bold magenta]{dataset}[/bold magenta]")
