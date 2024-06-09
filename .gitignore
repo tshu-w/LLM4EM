@@ -138,3 +138,4 @@ dmypy.json
 !/results/.gitkeep
 
 !.dir-locals.el
+det.yaml
