@@ -130,12 +130,7 @@ dmypy.json
 .pyre/
 
 ### Lightning-Template ###
-/data/*
-!/data/.gitkeep
-/models/*
-!/models/.gitkeep
-/results/*
-!/results/.gitkeep
-
-!.dir-locals.el
+/data
+/models
+/results
 det.yaml
