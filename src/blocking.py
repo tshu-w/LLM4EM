@@ -162,6 +162,9 @@ if __name__ == "__main__":
         )
 
         # Prepare training data for Sudowoodo
+        for key in ["record_left", "record_right"]:
+            candidates_sample[key] = candidates_sample[key].str.replace("\t", " ")
+            candidates_remains[key] = candidates_remains[key].str.replace("\t", " ")
         Path(f"data/llm4em/sudowoodo/{dataset}").mkdir(parents=True, exist_ok=True)
         candidates_remains["label"] = candidates_remains["label"].astype(int)
         candidates_remains[["record_left", "record_right", "label"]][:5000].to_csv(
