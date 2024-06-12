@@ -36,6 +36,7 @@ class Seq2SeqWrapper:
         import torch
         from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
 
+        torch.nn.CrossEntropyLoss = partial(torch.nn.CrossEntropyLoss, reduction="none")
         self._model = AutoModelForSeq2SeqLM.from_pretrained(
             self.model_dir / self.model_name,
             device_map="auto",
@@ -44,7 +45,6 @@ class Seq2SeqWrapper:
         self._tokenizer = AutoTokenizer.from_pretrained(
             self.model_dir / self.model_name
         )
-        torch.nn.CrossEntropyLoss = partial(torch.nn.CrossEntropyLoss, reduction="none")
 
     def generate(self, source: str, **kwargs) -> str:
         input_ids = self.tokenizer(source, return_tensors="pt").input_ids.to("cuda")
