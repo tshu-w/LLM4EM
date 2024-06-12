@@ -12,7 +12,7 @@ from src.matching import Matching
 from src.selecting import Selecting
 
 
-class Hybrid:
+class RankingThenSelecting:
     ranking_strategy: Literal["matching", "comparing"] = "matching"
 
     def __init__(
@@ -62,7 +62,7 @@ class Hybrid:
 if __name__ == "__main__":
     results = {}
     dataset_files = sorted(Path("data/llm4em").glob("*.csv"))
-    hybrid = Hybrid()
+    pipeline = RankingThenSelecting()
     for file in dataset_files:
         dataset = file.stem
         print(f"[bold magenta]{dataset}[/bold magenta]")
@@ -84,7 +84,7 @@ if __name__ == "__main__":
         ]
 
         preds_lst = thread_map(
-            lambda it: hybrid(it, topK=4),
+            lambda it: pipeline(it, topK=4),
             instances,
             max_workers=16,
         )
@@ -100,8 +100,8 @@ if __name__ == "__main__":
         results[dataset].pop("support")
         for k, v in results[dataset].items():
             results[dataset][k] = v * 100
-        results[dataset]["cost"] = hybrid.cost
-        hybrid.cost = 0
+        results[dataset]["cost"] = pipeline.cost
+        pipeline.cost = 0
 
     results["mean"] = {
         "precision": sum(v["precision"] for v in results.values()) / len(results),
