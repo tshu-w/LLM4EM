@@ -90,7 +90,7 @@ Record B: {{ cpair[1] }}
                     self.wrapper.cal_log_probs(sources[bslice], targets[bslice])
                 )
 
-            score = sum(math.exp(log_probs[i]) for i in [0, 4]) - sum(
+            score = sum(math.exp(log_probs[i]) for i in [0, 3]) - sum(
                 math.exp(log_probs[i]) for i in [1, 2]
             )
 
