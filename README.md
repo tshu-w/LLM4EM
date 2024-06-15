@@ -12,7 +12,7 @@ First, install dependencies and prepare the data
 ```console
 # clone project
 git clone https://github.com/YourGithubName/your-repository-name
-cd your-repository-name
+cd LLM4EM
 
 # [SUGGESTED] use conda environment
 conda env create -f environment.yaml
