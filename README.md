@@ -1,10 +1,7 @@
 <div align="center">
-
 <h2 id="llm4em">Match, Compare, or Select? An Investigation of Large Language Models for Entity Matching</h2>
-
-</div>
-
 <img src="https://github.com/tshu-w/LLM4EM/assets/13161779/6b776084-2312-44cd-8572-eda8205f628b" alt="Three strategies for LLM-based entity matching." width="40%">
+</div>
 
 ## Description
 
