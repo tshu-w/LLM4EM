@@ -4,14 +4,12 @@ from pathlib import Path
 from openai import OpenAI
 from tenacity import retry, stop_after_attempt, wait_exponential
 
-CLIENT = OpenAI()
-
 
 @retry(stop=stop_after_attempt(10), wait=wait_exponential(multiplier=1, max=10))
 def openai_chat_complete(
     messages,
     model,
-    client=CLIENT,
+    client=OpenAI(),  # noqa: B008
     **kwargs,
 ):
     response = client.chat.completions.create(messages=messages, model=model, **kwargs)
@@ -156,6 +154,7 @@ class APICostCalculator:
         "gpt-3.5-turbo": {"prompt": 0.5, "completion": 1.5},
         "gpt-3.5-turbo-0125": {"prompt": 0.5, "completion": 1.5},
         "gpt-3.5-turbo-instruct": {"prompt": 1.5, "completion": 2.0},
+        "gpt-4o-mini": {"prompt": 0.15, "completion": 0.60},
         "gpt-4o": {"prompt": 5, "completion": 15},
         "gpt-4o-2024-05-13": {"prompt": 5, "completion": 15},
         "gpt-4-turbo": {"prompt": 10, "completion": 30},
@@ -169,7 +168,7 @@ class APICostCalculator:
     }
     # fmt: on
 
-    def __init__(self, model_name: str = "gpt-3.5-turbo"):
+    def __init__(self, model_name: str = "gpt-4o-mini"):
         if model_name not in self._model_cost_per_1m_tokens:
             raise ValueError(f"Unknown model name: {model_name}")
         self._model_name = model_name
@@ -179,6 +178,8 @@ class APICostCalculator:
         @wraps(func)
         def wrapper(*args, **kwargs):
             response = func(*args, **kwargs)
+            if response.usage is None:
+                return response
             cost = (
                 self._model_cost_per_1m_tokens[self._model_name]["prompt"]
                 * response.usage.prompt_tokens

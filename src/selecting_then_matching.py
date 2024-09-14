@@ -26,7 +26,7 @@ Candidate records:{% for candidate in candidates %}
 
     def __init__(
         self,
-        model_name: str = "gpt-3.5-turbo-0613",
+        model_name: str = "gpt-4o-mini",
         template: Template = template,
     ):
         self.model = model_name

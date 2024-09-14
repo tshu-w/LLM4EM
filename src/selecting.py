@@ -25,7 +25,7 @@ Candidate records:{% for candidate in candidates %}
 
     def __init__(
         self,
-        model_name: str = "gpt-3.5-turbo-0613",
+        model_name: str = "gpt-4o-mini",
         template: Template = template,
     ):
         self.model = model_name
@@ -116,15 +116,13 @@ if __name__ == "__main__":
         results[dataset].pop("support")
         for k, v in results[dataset].items():
             results[dataset][k] = v * 100
-        results[dataset]["cost"] = selector.cost
-        selector.cost = 0
 
     results["mean"] = {
         "precision": sum(v["precision"] for v in results.values()) / len(results),
         "recall": sum(v["recall"] for v in results.values()) / len(results),
         "f1-score": sum(v["f1-score"] for v in results.values()) / len(results),
-        "cost": sum(v["cost"] for v in results.values()) / len(results),
     }
     df = pd.DataFrame.from_dict(results, orient="index")
     print(df)
     print(df.to_csv(float_format="%.2f", index=False))
+    print(f"{selector.cost:.2f}")

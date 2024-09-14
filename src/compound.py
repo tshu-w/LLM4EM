@@ -12,7 +12,6 @@ from src.matching_sq import MatchingSQ
 from src.selecting import Selecting
 
 RANKING_STRATEGY = "matching"
-LLM = "gpt-3.5-turbo-0613"
 
 
 class ComEM:
@@ -21,7 +20,7 @@ class ComEM:
     def __init__(
         self,
         ranking_model_name: str = "flan-t5-xl",
-        selecting_model_name: str = "gpt-3.5-turbo-0613",
+        selecting_model_name: str = "gpt-4o-mini",
         ranking_strategy: Literal["matching", "comparing"] = ranking_strategy,
     ):
         self.ranking_model_name = ranking_model_name
@@ -41,7 +40,6 @@ class ComEM:
         indexes_k = indexes[:topK]
         preds = [False] * len(instance["candidates"])
         dq = deque(indexes[:topK])
-        dq.rotate(2)
         indexes_k = list(dq)
         instance_k = {
             "anchor": instance["anchor"],
@@ -103,15 +101,13 @@ if __name__ == "__main__":
         results[dataset].pop("support")
         for k, v in results[dataset].items():
             results[dataset][k] = v * 100
-        results[dataset]["cost"] = compound.cost
-        compound.cost = 0
 
     results["mean"] = {
         "precision": sum(v["precision"] for v in results.values()) / len(results),
         "recall": sum(v["recall"] for v in results.values()) / len(results),
         "f1-score": sum(v["f1-score"] for v in results.values()) / len(results),
-        "cost": sum(v["cost"] for v in results.values()) / len(results),
     }
     df = pd.DataFrame.from_dict(results, orient="index")
     print(df)
     print(df.to_csv(float_format="%.2f", index=False))
+    print(f"{compound.cost:.2f}")

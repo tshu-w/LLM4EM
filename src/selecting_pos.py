@@ -25,7 +25,7 @@ Candidate records:{% for candidate in candidates %}
 
     def __init__(
         self,
-        model_name: str = "gpt-3.5-turbo-0613",
+        model_name: str = "gpt-4o-mini",
         template: Template = template,
     ):
         self.model = model_name
@@ -75,7 +75,7 @@ Candidate records:{% for candidate in candidates %}
 
 
 if __name__ == "__main__":
-    for pos in range(0, 10, 2):
+    for pos in range(0, 10, 1):
         results = {}
         dataset_files = sorted(Path("data/llm4em").glob("*.csv"))
         selector = Selecting()

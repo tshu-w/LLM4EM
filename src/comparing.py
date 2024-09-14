@@ -26,7 +26,7 @@ Record B: {{ cpair[1] }}
 
     def __init__(
         self,
-        model_name: str = "gpt-3.5-turbo-0613",
+        model_name: str = "gpt-4o-mini",
         template: Template = template,
     ):
         self.model = model_name
@@ -39,7 +39,7 @@ Record B: {{ cpair[1] }}
         )
         self.matcher = Matching(model_name=model_name)
 
-    def cmp(self, instance) -> int:
+    def cmp(self, instance, compare_twice: bool = True) -> int:
         response1 = self.chat_complete(
             messages=[
                 {
@@ -57,35 +57,37 @@ Record B: {{ cpair[1] }}
             top_logprobs=3 if self.model.startswith("gpt") else None,
             max_tokens=3,
         )
-        response2 = self.chat_complete(
-            messages=[
-                {
-                    "role": "user",
-                    "content": self.template.render(
-                        anchor=instance["anchor"],
-                        cpair=instance["cpair"][::-1],
-                    ),
-                }
-            ],
-            model=self.model,
-            seed=42,
-            temperature=0.0,
-            logprobs=self.model.startswith("gpt"),
-            top_logprobs=3 if self.model.startswith("gpt") else None,
-            max_tokens=3,
-        )
-        score = 0
         content1 = response1.choices[0].message.content.strip()
-        content2 = response2.choices[0].message.content.strip()
+        score = 0
         if "A" in content1:
             score += 1
         elif "B" in content1:
             score -= 1
 
-        if "B" in content2:
-            score += 1
-        elif "A" in content2:
-            score -= 1
+        if compare_twice:
+            response2 = self.chat_complete(
+                messages=[
+                    {
+                        "role": "user",
+                        "content": self.template.render(
+                            anchor=instance["anchor"],
+                            cpair=instance["cpair"][::-1],
+                        ),
+                    }
+                ],
+                model=self.model,
+                seed=42,
+                temperature=0.0,
+                logprobs=self.model.startswith("gpt"),
+                top_logprobs=3 if self.model.startswith("gpt") else None,
+                max_tokens=3,
+            )
+            content2 = response2.choices[0].message.content.strip()
+
+            if "B" in content2:
+                score += 1
+            elif "A" in content2:
+                score -= 1
 
         return score
 
@@ -230,15 +232,13 @@ if __name__ == "__main__":
         results[dataset].pop("support")
         for k, v in results[dataset].items():
             results[dataset][k] = v * 100
-        results[dataset]["cost"] = comparor.cost
-        comparor.cost = 0
 
     results["mean"] = {
         "precision": sum(v["precision"] for v in results.values()) / len(results),
         "recall": sum(v["recall"] for v in results.values()) / len(results),
         "f1-score": sum(v["f1-score"] for v in results.values()) / len(results),
-        "cost": sum(v["cost"] for v in results.values()) / len(results),
     }
     df = pd.DataFrame.from_dict(results, orient="index")
     print(df)
     print(df.to_csv(float_format="%.2f", index=False))
+    print(f"{comparor.cost:.2f}")
