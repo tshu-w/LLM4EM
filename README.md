@@ -10,7 +10,7 @@
 
 ## News
 
-- 🎉 Our paper has been accepted at [COLING 2025](https://coling2025.org).
+- [2024-12-01] 🎉 Our paper has been accepted at [COLING 2025](https://coling2025.org).
 
 ## Description
 
