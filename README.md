@@ -10,7 +10,7 @@
 
 ## News
 
-- 🎉 Our paper has been accepted to COLING 2025 (The 31st International Conference on Computational Linguistics)
+- 🎉 Our paper has been accepted at [COLING 2025](https://coling2025.org).
 
 ## Description
 
