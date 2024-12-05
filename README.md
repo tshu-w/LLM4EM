@@ -42,7 +42,7 @@ python src/{strategy}.py
 
 ## Citation
 ```
-@Article{DBLP:journals/corr/abs-2405-16884,
+@article{DBLP:journals/corr/abs-2405-16884,
   author       = {Tianshu Wang and Hongyu Lin and Xiaoyang Chen and Xianpei Han
                   and Hao Wang and Zhenyu Zeng and Le Sun},
   title        = {Match, Compare, or Select? An Investigation of Large Language
