@@ -1,8 +1,8 @@
 <div align="center">
   <h2 id="llm4em">Match, Compare, or Select? An Investigation of Large Language Models for Entity Matching</h2>
   <p>
-    <a href="https://arxiv.org/abs/2405.16884"><img src="http://img.shields.io/badge/arXiv-2405.16884-B31B1B.svg?style=flat-square" alt="Arxiv" /></a>
     <a href=""><img src="http://img.shields.io/badge/COLING-2025-4b44ce.svg?style=flat-square" alt="Conference" /></a>
+    <a href="https://arxiv.org/abs/2405.16884"><img src="http://img.shields.io/badge/arXiv-2405.16884-B31B1B.svg?style=flat-square" alt="Arxiv" /></a>
   </p>
   <img align=middle src="https://github.com/tshu-w/ComEM/assets/13161779/6b776084-2312-44cd-8572-eda8205f628b" alt="Three strategies for LLM-based entity matching." width="45%">
   <img align=middle src="https://github.com/tshu-w/ComEM/assets/13161779/41790e40-db87-4061-8442-0383402865b2" alt="Compound EM framework" width="45%">
