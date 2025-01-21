@@ -1,7 +1,7 @@
 <div align="center">
   <h2 id="llm4em">Match, Compare, or Select? An Investigation of Large Language Models for Entity Matching</h2>
   <p>
-    <a href=""><img src="http://img.shields.io/badge/COLING-2025-4b44ce.svg?style=flat-square" alt="Conference" /></a>
+    <a href="https://aclanthology.org/2025.coling-main.8/"><img src="http://img.shields.io/badge/COLING-2025-4b44ce.svg?style=flat-square" alt="Conference" /></a>
     <a href="https://arxiv.org/abs/2405.16884"><img src="http://img.shields.io/badge/arXiv-2405.16884-B31B1B.svg?style=flat-square" alt="Arxiv" /></a>
   </p>
   <img align=middle src="https://github.com/tshu-w/ComEM/assets/13161779/6b776084-2312-44cd-8572-eda8205f628b" alt="Three strategies for LLM-based entity matching." width="45%">
@@ -42,20 +42,28 @@ python src/{strategy}.py
 
 ## Citation
 ```
-@article{DBLP:journals/corr/abs-2405-16884,
-  author       = {Tianshu Wang and Hongyu Lin and Xiaoyang Chen and Xianpei Han
-                  and Hao Wang and Zhenyu Zeng and Le Sun},
-  title        = {Match, Compare, or Select? An Investigation of Large Language
-                  Models for Entity Matching},
-  journal      = {CoRR},
-  year         = 2024,
-  volume       = {abs/2405.16884},
-  doi          = {10.48550/ARXIV.2405.16884},
-  eprint       = {2405.16884},
-  eprinttype   = {arXiv},
-  url          = {https://doi.org/10.48550/arXiv.2405.16884},
-  timestamp    = {Tue, 18 Jun 2024 16:10:22 +0200},
-  biburl       = {https://dblp.org/rec/journals/corr/abs-2405-16884.bib},
-  bibsource    = {dblp computer science bibliography, https://dblp.org}
+@inproceedings{wang-etal-2025-match,
+    title = "Match, Compare, or Select? An Investigation of Large Language Models for Entity Matching",
+    author = "Wang, Tianshu  and
+      Chen, Xiaoyang  and
+      Lin, Hongyu  and
+      Chen, Xuanang  and
+      Han, Xianpei  and
+      Sun, Le  and
+      Wang, Hao  and
+      Zeng, Zhenyu",
+    editor = "Rambow, Owen  and
+      Wanner, Leo  and
+      Apidianaki, Marianna  and
+      Al-Khalifa, Hend  and
+      Eugenio, Barbara Di  and
+      Schockaert, Steven",
+    booktitle = "Proceedings of the 31st International Conference on Computational Linguistics",
+    month = jan,
+    year = "2025",
+    address = "Abu Dhabi, UAE",
+    publisher = "Association for Computational Linguistics",
+    url = "https://aclanthology.org/2025.coling-main.8/",
+    pages = "96--109",
 }
 ```
